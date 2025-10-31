@@ -1607,23 +1607,27 @@ Redis persistence is configured via RDB snapshots and AOF logs.
       
       // Check if git is available
       try {
-        await execaCommand('git --version', { cwd: projectDir });
+        await execaCommand('git --version', { cwd: projectDir, timeout: 5000 });
       } catch {
         spinner.info('Git not found, skipping repository initialization');
         return;
       }
 
       // Initialize git repo
-      await execaCommand('git init', { cwd: projectDir });
+      await execaCommand('git init', { cwd: projectDir, timeout: 5000 });
+      
+      // Configure git to skip hooks
+      await execaCommand('git config core.hooksPath /dev/null', { cwd: projectDir, timeout: 5000 }).catch(() => {});
       
       // Make initial commit
-      await execaCommand('git add .', { cwd: projectDir });
-      await execaCommand('git commit -m "Initial commit: Project scaffolded by SaaSaaS CLI"', { 
+      await execaCommand('git add .', { cwd: projectDir, timeout: 10000 });
+      await execaCommand('git commit -m "Initial commit: Project scaffolded by SaaSquatch CLI" --no-verify', { 
         cwd: projectDir,
+        timeout: 15000,
         env: {
-          GIT_AUTHOR_NAME: 'SaaSaaS CLI',
+          GIT_AUTHOR_NAME: 'SaaSquatch CLI',
           GIT_AUTHOR_EMAIL: 'cli@saasquatch.dev',
-          GIT_COMMITTER_NAME: 'SaaSaaS CLI',
+          GIT_COMMITTER_NAME: 'SaaSquatch CLI',
           GIT_COMMITTER_EMAIL: 'cli@saasquatch.dev',
         }
       });
@@ -1632,6 +1636,9 @@ Redis persistence is configured via RDB snapshots and AOF logs.
     } catch (error) {
       // Git initialization is optional, don't fail if it doesn't work
       console.log(chalk.yellow('  ⚠️  Could not initialize git repository (optional)'));
+      if (error instanceof Error) {
+        console.log(chalk.gray(`    ${error.message}`));
+      }
     }
   }
 
