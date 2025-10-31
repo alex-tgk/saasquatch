@@ -28,7 +28,7 @@ The project is a **pnpm monorepo** that will generate pnpm monorepos for users:
 ```
 saasquatch/                          # CLI tool repository
 ├── packages/
-│   ├── cli/                         # Main CLI (@saasaas/cli)
+│   ├── cli/                         # Main CLI (@saasquatch/cli)
 │   │   ├── src/
 │   │   │   ├── commands/            # init.ts (main command)
 │   │   │   ├── prompts/             # Interactive questionnaire
@@ -49,11 +49,11 @@ saasquatch/                          # CLI tool repository
 
 ### Generated Project Structure
 
-When users run `npx @saasaas/cli init my-project`, they get:
+When users run `npx @saasquatch/cli init my-project`, they get:
 
 ```
 my-project/
-├── saasaas.config.json              # Configuration file
+├── saasquatch.config.json              # Configuration file
 ├── services/
 │   ├── auth-service/                # Port 3001 - JWT authentication
 │   ├── user-service/                # Port 3002 - User management
@@ -165,7 +165,7 @@ pnpm dev init test-project
 
 ## Configuration Schema
 
-The core of the tool is `saasaas.config.json`, defined with Zod in `packages/cli/src/types/config.types.ts`:
+The core of the tool is `saasquatch.config.json`, defined with Zod in `packages/cli/src/types/config.types.ts`:
 
 ```typescript
 {
@@ -194,11 +194,11 @@ The core of the tool is `saasaas.config.json`, defined with Zod in `packages/cli
 - Setup pnpm monorepo with packages/cli, packages/templates, packages/core
 - Create Zod configuration schema (`config.types.ts`)
 - Build interactive prompts with Inquirer (`project.prompts.ts`)
-- Implement `saasaas init` command with Commander
+- Implement `saasquatch init` command with Commander
 - Create project generator using Plop/Handlebars
-- Generate `saasaas.config.json` + basic folder structure
+- Generate `saasquatch.config.json` + basic folder structure
 
-**Success**: `npx saasaas init test-project` creates config + folders
+**Success**: `npx saasquatch init test-project` creates config + folders
 
 ### Phase 2: Fastify Auth Service (Week 2)
 
@@ -291,7 +291,7 @@ pnpm dev init test-output
 # Verify structure
 cd test-output
 ls -la
-cat saasaas.config.json
+cat saasquatch.config.json
 ```
 
 ### Running Generated Services (After Week 3)
@@ -368,7 +368,7 @@ Located in `.claude/agents/`:
 ### MVP Complete When:
 
 **Functionality**:
-- ✅ `saasaas init` generates working project in < 2 min
+- ✅ `saasquatch init` generates working project in < 2 min
 - ✅ Auth service: register, login, JWT flow works
 - ✅ User service: CRUD + multi-tenancy works
 - ✅ Docker Compose starts all services
@@ -409,7 +409,7 @@ If resuming work after a break:
 git add .
 git commit -m "feat: implement configuration schema
 
-- Added Zod schema for saasaas.config.json
+- Added Zod schema for saasquatch.config.json
 - Added TypeScript types
 - Added validation
 

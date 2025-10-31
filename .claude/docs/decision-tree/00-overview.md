@@ -76,7 +76,7 @@ This project requires decisions across multiple dimensions:
 ## Project Structure (Proposed)
 
 ```
-saasaas-cli/
+saasquatch-cli/
 ├── cli/                          # CLI tool
 │   ├── commands/                 # CLI commands
 │   ├── prompts/                  # Inquirer prompts

@@ -1,0 +1,7 @@
+# pnpm configuration for monorepo
+auto-install-peers=true
+strict-peer-dependencies=false
+shamefully-hoist=true
+
+# Ensure consistent package manager
+engine-strict=true

@@ -79,8 +79,8 @@ mcp tools myfs
 **Use Case for SaaSaaS**:
 ```bash
 # Create aliases for testing generated services
-mcp alias add auth-test npx @saasaas/auth-service
-mcp alias add user-test npx @saasaas/user-service
+mcp alias add auth-test npx @saasquatch/auth-service
+mcp alias add user-test npx @saasquatch/user-service
 
 # Test tools on services
 mcp tools auth-test
@@ -129,7 +129,7 @@ mcp shell npx -y @modelcontextprotocol/server-filesystem ~
 **Use Case for SaaSaaS**:
 ```bash
 # Interactive exploration of generated service capabilities
-mcp shell npx @saasaas/cli
+mcp shell npx @saasquatch/cli
 ```
 
 ### 5. Web Interface
@@ -187,7 +187,7 @@ mcp new prompt:setup_guide --sdk=ts
 
 ```bash
 # 1. Create alias for service
-mcp alias add auth npx @saasaas/auth-service
+mcp alias add auth npx @saasquatch/auth-service
 
 # 2. List available tools
 mcp tools auth
@@ -203,7 +203,7 @@ mcp shell auth
 
 ```bash
 # Start web UI for visual development
-mcp web npx @saasaas/cli
+mcp web npx @saasquatch/cli
 
 # Opens browser interface for:
 # - Exploring tools
@@ -222,7 +222,7 @@ cd packages/cli
 mcp new tool:init tool:add tool:generate --sdk=ts --transport=stdio
 
 # Create config resources
-mcp new resource:saasaas_config resource:template_list --sdk=ts
+mcp new resource:saasquatch_config resource:template_list --sdk=ts
 
 # Create interactive prompts
 mcp new prompt:project_setup prompt:database_choice --sdk=ts
@@ -232,7 +232,7 @@ mcp new prompt:project_setup prompt:database_choice --sdk=ts
 
 ```bash
 # Test Fastify service templates
-mcp alias add fastify-test npx @saasaas/templates/auth-service
+mcp alias add fastify-test npx @saasquatch/templates/auth-service
 
 # List generated tools
 mcp tools fastify-test
@@ -245,9 +245,9 @@ mcp call login --params '{"email":"test@example.com","password":"pass123"}' fast
 
 ```bash
 # Create aliases for all services
-mcp alias add auth npx @saasaas/auth-service
-mcp alias add users npx @saasaas/user-service
-mcp alias add gateway npx @saasaas/api-gateway
+mcp alias add auth npx @saasquatch/auth-service
+mcp alias add users npx @saasquatch/user-service
+mcp alias add gateway npx @saasquatch/api-gateway
 
 # Test multi-service flows
 mcp shell auth
@@ -289,9 +289,9 @@ mcp tools <server> -f pretty
 
 ```json
 {
-  "auth": "npx @saasaas/auth-service",
-  "users": "npx @saasaas/user-service",
-  "gateway": "npx @saasaas/api-gateway"
+  "auth": "npx @saasquatch/auth-service",
+  "users": "npx @saasquatch/user-service",
+  "gateway": "npx @saasquatch/api-gateway"
 }
 ```
 

@@ -14,7 +14,7 @@ You're building **SaaSaaS** (SaaS-as-a-Service) - a production-ready CLI tool th
 
 Developers run one command and get a complete, production-ready SaaS platform:
 ```bash
-npx @saasaas/cli init my-project
+npx @saasquatch/cli init my-project
 # → Generates auth service, user service, API gateway
 # → Sets up Redis, PostgreSQL, NATS
 # → Includes tests, docs, Docker Compose
@@ -62,7 +62,7 @@ saasquatch/
 
 2. **✅ Repository Setup**
    - Git repository initialized
-   - Pushed to GitHub: https://github.com/alex-tgk/saasaas
+   - Pushed to GitHub: https://github.com/alex-tgk/saasquatch
    - Created `phase/one` branch
    - Merged claudekit-skills (40+ skills, 30+ agents)
 
@@ -203,18 +203,18 @@ From `09-GETTING-STARTED.md`:
 ### Day 3-4: Interactive Prompts
 - [ ] Implement interactive prompts (`project.prompts.ts`)
 - [ ] Build configuration generation
-- [ ] Test: Generate `saasaas.config.json`
+- [ ] Test: Generate `saasquatch.config.json`
 
 ### Day 5-7: Project Generator
-- [ ] Build main `saasaas init` command
+- [ ] Build main `saasquatch init` command
 - [ ] Implement project generator
 - [ ] Create basic template structure
 - [ ] Test end-to-end: Generate basic project
 
 **Success Criteria**:
 ```bash
-npx saasaas init test-project
-# Should create: test-project/saasaas.config.json + basic structure
+npx saasquatch init test-project
+# Should create: test-project/saasquatch.config.json + basic structure
 ```
 
 ---
@@ -347,7 +347,7 @@ mkdir -p packages/cli/src
 git add .
 git commit -m "feat: implement configuration schema
 
-- Added Zod schema for saasaas.config.json
+- Added Zod schema for saasquatch.config.json
 - Added TypeScript types
 - Added validation
 
@@ -432,7 +432,7 @@ in 08-final-implementation-prompt.md"
 
 ## 🔗 Important Links
 
-- **GitHub Repo**: https://github.com/alex-tgk/saasaas
+- **GitHub Repo**: https://github.com/alex-tgk/saasquatch
 - **Current Branch**: `phase/one`
 - **Main Branch**: `main`
 
@@ -444,7 +444,7 @@ You'll know you're successful when:
 
 ```bash
 # 1. Generate project (< 2 min)
-npx @saasaas/cli init my-saas
+npx @saasquatch/cli init my-saas
 
 # 2. Install & start (< 5 min total)
 cd my-saas

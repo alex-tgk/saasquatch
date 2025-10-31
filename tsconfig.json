@@ -16,7 +16,7 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@saasaas/*": ["packages/*/src"]
+      "@saasquatch/*": ["packages/*/src"]
     }
   },
   "references": [

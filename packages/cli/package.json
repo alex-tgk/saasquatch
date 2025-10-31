@@ -1,12 +1,12 @@
 {
-  "name": "@saasaas/cli",
+  "name": "@saasquatch/cli",
   "version": "0.1.0",
   "type": "module",
   "description": "CLI tool for generating production-ready Fastify microservices",
   "author": "SaaSaaS Team",
   "license": "MIT",
   "bin": {
-    "saasaas": "./dist/cli.js"
+    "saasquatch": "./dist/cli.js"
   },
   "files": [
     "dist",

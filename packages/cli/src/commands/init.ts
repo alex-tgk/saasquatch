@@ -193,12 +193,12 @@ export function createInitCommand(): Command {
         if (!options?.dryRun) {
           spinner.start('Writing configuration...');
           await fs.ensureDir(projectDir);
-          const configPath = path.join(projectDir, 'saasaas.config.json');
+          const configPath = path.join(projectDir, 'saasquatch.config.json');
           await fs.writeJSON(configPath, config, { spaces: 2 });
-          spinner.succeed(`Configuration saved to ${chalk.green('saasaas.config.json')}`);
+          spinner.succeed(`Configuration saved to ${chalk.green('saasquatch.config.json')}`);
         } else {
           console.log(chalk.cyan('\n[DRY RUN] Would save configuration to:'));
-          console.log(path.join(projectDir, 'saasaas.config.json'));
+          console.log(path.join(projectDir, 'saasquatch.config.json'));
         }
 
         // Step 4: Generate project
@@ -210,7 +210,7 @@ export function createInitCommand(): Command {
         } else {
           console.log(chalk.cyan('\n[DRY RUN] Would generate the following structure:'));
           console.log(chalk.gray('  ' + config.project.name + '/'));
-          console.log(chalk.gray('  ├── saasaas.config.json'));
+          console.log(chalk.gray('  ├── saasquatch.config.json'));
           console.log(chalk.gray('  ├── package.json'));
           console.log(chalk.gray('  ├── pnpm-workspace.yaml'));
           console.log(chalk.gray('  ├── docker-compose.yml'));
@@ -266,10 +266,10 @@ export function createInitCommand(): Command {
 
           console.log();
           console.log(chalk.cyan('🎯 Available Commands:'));
-          console.log(chalk.gray('  saasaas add service   - Add a new service'));
-          console.log(chalk.gray('  saasaas add route     - Add a new route'));
-          console.log(chalk.gray('  saasaas test          - Run tests'));
-          console.log(chalk.gray('  saasaas deploy        - Deploy to production'));
+          console.log(chalk.gray('  saasquatch add service   - Add a new service'));
+          console.log(chalk.gray('  saasquatch add route     - Add a new route'));
+          console.log(chalk.gray('  saasquatch test          - Run tests'));
+          console.log(chalk.gray('  saasquatch deploy        - Deploy to production'));
         }
 
       } catch (error) {

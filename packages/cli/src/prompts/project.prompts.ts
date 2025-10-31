@@ -344,7 +344,12 @@ function buildConfigFromAnswers(answers: any): Partial<Config> {
   }
   if (answers.testCoverage !== undefined) {
     config.features = {
-      ...config.features,
+      multiTenancy: config.features?.multiTenancy ?? false,
+      authentication: config.features?.authentication ?? true,
+      rateLimit: config.features?.rateLimit ?? true,
+      cors: config.features?.cors ?? true,
+      compression: config.features?.compression ?? true,
+      swagger: config.features?.swagger ?? true,
       testing: {
         unit: true,
         integration: true,

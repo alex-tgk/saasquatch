@@ -29,7 +29,7 @@ import inquirer from 'inquirer';
 const program = new Command();
 
 program
-  .name('saasaas')
+  .name('saasquatch')
   .description('SaaS-as-a-Service CLI')
   .version('1.0.0');
 
@@ -65,7 +65,7 @@ program
 
 **Example UX**:
 ```bash
-$ saasaas init
+$ saasquatch init
 
    _____ ____  ___   _____ ____  ___   _____
   / ___// __ \/   | / ___// __ \/   | / ___/
@@ -420,19 +420,19 @@ class ServiceGenerator {
 ### Primary Commands
 
 ```bash
-saasaas init                    # Initialize new project
-saasaas add service             # Add new microservice
-saasaas add integration         # Add integration (DB, cache, queue)
-saasaas generate crud           # Generate CRUD for entity
-saasaas generate client         # Generate API client
-saasaas config                  # Manage configuration
-saasaas deploy                  # Deploy services
-saasaas dev                     # Start development environment
+saasquatch init                    # Initialize new project
+saasquatch add service             # Add new microservice
+saasquatch add integration         # Add integration (DB, cache, queue)
+saasquatch generate crud           # Generate CRUD for entity
+saasquatch generate client         # Generate API client
+saasquatch config                  # Manage configuration
+saasquatch deploy                  # Deploy services
+saasquatch dev                     # Start development environment
 ```
 
 ### Command Details
 
-#### `saasaas init`
+#### `saasquatch init`
 ```typescript
 {
   prompts: [
@@ -455,7 +455,7 @@ saasaas dev                     # Start development environment
 }
 ```
 
-#### `saasaas add service`
+#### `saasquatch add service`
 ```typescript
 {
   prompts: [
@@ -478,7 +478,7 @@ saasaas dev                     # Start development environment
 }
 ```
 
-#### `saasaas generate crud`
+#### `saasquatch generate crud`
 ```typescript
 {
   prompts: [
@@ -506,7 +506,7 @@ saasaas dev                     # Start development environment
 
 ### Project Configuration File
 
-**Location**: `saasaas.config.json`
+**Location**: `saasquatch.config.json`
 
 ```json
 {
@@ -625,20 +625,20 @@ saasaas dev                     # Start development environment
 
 ```bash
 # Start all services in development mode
-saasaas dev
+saasquatch dev
 
 # Start specific services
-saasaas dev --services=api-gateway,user-service
+saasquatch dev --services=api-gateway,user-service
 
 # Watch for changes
-saasaas dev --watch
+saasquatch dev --watch
 ```
 
 ### Interactive Service Browser
 
 ```bash
 # Launch interactive dashboard
-saasaas dashboard
+saasquatch dashboard
 
 ┌─────────────────────────────────────────┐
 │ SaaSaaS Service Dashboard               │
@@ -662,10 +662,10 @@ saasaas dashboard
 
 ```bash
 # Install autocomplete
-saasaas completion install
+saasquatch completion install
 
 # Now supports tab completion
-saasaas add <TAB>
+saasquatch add <TAB>
   service    integration    crud
 ```
 

@@ -67,7 +67,7 @@
 ### Structure
 **Monorepo** (pnpm workspaces)
 ```
-saasaas/
+saasquatch/
 ├── packages/
 │   ├── cli/           # CLI tool
 │   ├── templates/     # Fastify templates
@@ -80,13 +80,13 @@ saasaas/
 ### CLI Workflow
 **Single Command with Two Phases**:
 ```bash
-saasaas init my-project
+saasquatch init my-project
 ```
 
 **Phase 1**: Interactive questionnaire
 - Collects project requirements
 - Smart defaults with overrides
-- Generates `saasaas.config.json`
+- Generates `saasquatch.config.json`
 
 **Phase 2**: Immediate generation
 - Reads configuration
@@ -94,7 +94,7 @@ saasaas init my-project
 - Sets up infrastructure
 - Creates documentation
 
-**Result**: `saasaas.config.json` + complete working project
+**Result**: `saasquatch.config.json` + complete working project
 
 ---
 
@@ -103,7 +103,7 @@ saasaas init my-project
 ### Monorepo Layout
 ```
 my-project/
-├── saasaas.config.json      # Configuration file
+├── saasquatch.config.json      # Configuration file
 ├── services/
 │   ├── auth-service/        # JWT authentication
 │   ├── user-service/        # User management
@@ -427,7 +427,7 @@ graph TB
 - Build configuration templates
 
 #### 2. config-schema-designer
-**Purpose**: Design and validate `saasaas.config.json` schema
+**Purpose**: Design and validate `saasquatch.config.json` schema
 
 **Usage**:
 - Define configuration structure
@@ -566,7 +566,7 @@ services:
 
 ## 📋 Configuration File Structure
 
-### `saasaas.config.json`
+### `saasquatch.config.json`
 ```json
 {
   "version": "1.0.0",

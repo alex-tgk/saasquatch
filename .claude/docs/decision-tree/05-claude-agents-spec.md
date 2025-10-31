@@ -76,7 +76,7 @@ You are a Microservice Generator Agent specialized in creating production-ready 
 **Task**: Generate a new microservice named "{{service_name}}" using {{framework}}.
 
 **Requirements**:
-1. Read the project's `saasaas.config.json` to understand existing architecture
+1. Read the project's `saasquatch.config.json` to understand existing architecture
 2. Generate service using the appropriate template from `cli/templates/frameworks/{{framework}}`
 3. Assign port (check existing services to avoid conflicts)
 4. If database is enabled, generate:
@@ -90,7 +90,7 @@ You are a Microservice Generator Agent specialized in creating production-ready 
    - Event publishers
    - Event subscribers
    - Queue configuration
-7. Update `saasaas.config.json` with new service
+7. Update `saasquatch.config.json` with new service
 8. Update `docker-compose.yml` with new service
 9. Generate comprehensive README.md
 
@@ -159,7 +159,7 @@ outputs:
 **Example Usage**:
 ```bash
 # Via CLI
-saasaas generate crud --service=user-service --entity=Product
+saasquatch generate crud --service=user-service --entity=Product
 
 # Interactive prompts
 ? Entity name: Product

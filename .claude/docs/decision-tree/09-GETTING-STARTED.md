@@ -101,18 +101,18 @@ Based on your responses, here's what you're building:
 **Goal**: Get the CLI tool working end-to-end
 
 **Tasks**:
-- [ ] Setup pnpm monorepo (`saasaas/packages/cli`, `packages/templates`, `packages/core`)
+- [ ] Setup pnpm monorepo (`saasquatch/packages/cli`, `packages/templates`, `packages/core`)
 - [ ] Install dependencies (Commander, Inquirer, Plop, Handlebars, Zod)
 - [ ] Create configuration schema (`config.types.ts`)
 - [ ] Implement interactive prompts (`project.prompts.ts`)
-- [ ] Build `saasaas init` command
+- [ ] Build `saasquatch init` command
 - [ ] Implement basic project generator
 - [ ] Test: Generate a basic project structure
 
 **Success Criteria**:
 ```bash
-npx saasaas init test-project
-# Should create: test-project/saasaas.config.json + basic structure
+npx saasquatch init test-project
+# Should create: test-project/saasquatch.config.json + basic structure
 ```
 
 ---
@@ -248,8 +248,8 @@ npm install -g pnpm
 
 ```bash
 # Create project directory
-mkdir saasaas
-cd saasaas
+mkdir saasquatch
+cd saasquatch
 
 # Initialize pnpm workspace
 pnpm init
@@ -317,7 +317,7 @@ It should accept config for JWT secret and token expiry."
 #### 2. config-schema-designer
 ```
 Use when: Designing configuration schemas
-Example: "Review this Zod schema for saasaas.config.json.
+Example: "Review this Zod schema for saasquatch.config.json.
 Suggest better validation and TypeScript types."
 ```
 
@@ -342,7 +342,7 @@ Include edge cases for invalid tokens and password validation."
 Your MVP is complete when:
 
 ### Functionality
-- [ ] `saasaas init my-project` generates complete working project
+- [ ] `saasquatch init my-project` generates complete working project
 - [ ] Generated project has auth-service, user-service, api-gateway
 - [ ] All services connect to Redis, PostgreSQL, NATS
 - [ ] Multi-tenancy works (schema-per-tenant)
@@ -379,7 +379,7 @@ After implementing, you should be able to:
 
 ```bash
 # 1. Generate project
-npx @saasaas/cli init my-saas
+npx @saasquatch/cli init my-saas
 
 # 2. Install & start
 cd my-saas
@@ -487,7 +487,7 @@ In 4 weeks, you'll have:
 
 **First command to run**:
 ```bash
-mkdir saasaas && cd saasaas
+mkdir saasquatch && cd saasquatch
 pnpm init
 ```
 

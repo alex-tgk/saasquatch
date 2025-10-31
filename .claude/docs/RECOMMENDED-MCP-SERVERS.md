@@ -202,7 +202,7 @@ npm install @executeautomation/mcp-playwright
 **Use These Tools**:
 1. **MCP Tools** - Scaffold initial CLI structure
    ```bash
-   mcp new saasaas-cli --transport stdio
+   mcp new saasquatch-cli --transport stdio
    ```
 
 2. **Kubb** - Setup OpenAPI → TypeScript pipeline for config generation

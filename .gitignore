@@ -103,3 +103,8 @@ coverage/
 # Backup files
 *.bak
 *.backup
+
+# CLI execution outputs
+.output/
+output/
+generated-projects/

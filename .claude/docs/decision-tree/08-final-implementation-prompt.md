@@ -21,7 +21,7 @@ Build a CLI tool called **SaaSaaS** (SaaS-as-a-Service) that generates complete 
 Create a pnpm monorepo with this structure:
 
 ```
-saasaas/
+saasquatch/
 ├── packages/
 │   ├── cli/                    # Main CLI package
 │   │   ├── src/
@@ -77,7 +77,7 @@ saasaas/
 
 **Initialize with**:
 ```bash
-mkdir saasaas && cd saasaas
+mkdir saasquatch && cd saasquatch
 pnpm init
 # Create pnpm-workspace.yaml
 # Create packages structure
@@ -90,11 +90,11 @@ pnpm init
 **packages/cli/package.json**:
 ```json
 {
-  "name": "@saasaas/cli",
+  "name": "@saasquatch/cli",
   "version": "0.1.0",
   "type": "module",
   "bin": {
-    "saasaas": "./dist/cli.js"
+    "saasquatch": "./dist/cli.js"
   },
   "dependencies": {
     "commander": "^11.1.0",
@@ -381,7 +381,7 @@ export function createInitCommand(): Command {
 
         // Step 2: Write config file
         const projectDir = path.join(process.cwd(), validatedConfig.project.name);
-        const configPath = path.join(projectDir, 'saasaas.config.json');
+        const configPath = path.join(projectDir, 'saasquatch.config.json');
 
         await fs.ensureDir(projectDir);
         await fs.writeJSON(configPath, validatedConfig, { spaces: 2 });
@@ -952,7 +952,7 @@ This project uses a microservices architecture built with Fastify.
 ### Adding a New Service
 
 ```bash
-saasaas add service my-new-service
+saasquatch add service my-new-service
 ```
 
 ### Running Tests
@@ -1030,7 +1030,7 @@ Use these agents to help you build the CLI:
 **Prompt**: "Help me create a Handlebars template for [feature]. The template should follow Fastify best practices and include [requirements]."
 
 ### 2. config-schema-designer
-**Prompt**: "Review and improve the Zod schema for saasaas.config.json. Suggest validations, defaults, and better TypeScript types."
+**Prompt**: "Review and improve the Zod schema for saasquatch.config.json. Suggest validations, defaults, and better TypeScript types."
 
 ### 3. fastify-expert
 **Prompt**: "Review this Fastify service code and suggest improvements for [plugin architecture/error handling/validation/performance]."
@@ -1044,7 +1044,7 @@ Use these agents to help you build the CLI:
 
 Your implementation is successful when:
 
-1. **CLI works**: `saasaas init my-project` generates a complete working project
+1. **CLI works**: `saasquatch init my-project` generates a complete working project
 2. **Services run**: All generated services start without errors
 3. **Tests pass**: All generated tests pass
 4. **Documentation complete**: README, OpenAPI docs, and architecture diagrams generated
@@ -1058,7 +1058,7 @@ Your implementation is successful when:
 When complete, users should be able to run:
 
 ```bash
-npx @saasaas/cli init my-awesome-saas
+npx @saasquatch/cli init my-awesome-saas
 cd my-awesome-saas
 pnpm install
 docker-compose up -d

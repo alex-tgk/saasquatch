@@ -74,7 +74,7 @@ Create a production-ready CLI tool that generates complete microservices archite
 ## Core Features (MVP)
 
 ### 1. Project Initialization
-**Command**: `saasaas init`
+**Command**: `saasquatch init`
 
 **Functionality**:
 - Interactive prompts for project configuration
@@ -87,25 +87,25 @@ Create a production-ready CLI tool that generates complete microservices archite
 [Detailed structure based on user choices]
 
 ### 2. Service Generation
-**Command**: `saasaas add service`
+**Command**: `saasquatch add service`
 
 **Functionality**:
 [Based on selected framework and options]
 
 ### 3. CRUD Generation
-**Command**: `saasaas generate crud`
+**Command**: `saasquatch generate crud`
 
 **Functionality**:
 [Standard CRUD with user-selected features]
 
 ### 4. Integration Management
-**Command**: `saasaas add integration`
+**Command**: `saasquatch add integration`
 
 **Functionality**:
 [Based on selected infrastructure options]
 
 ### 5. Development Environment
-**Command**: `saasaas dev`
+**Command**: `saasquatch dev`
 
 **Functionality**:
 [Based on user's dev environment preference]
