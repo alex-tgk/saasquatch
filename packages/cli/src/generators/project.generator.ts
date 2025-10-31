@@ -88,9 +88,9 @@ export class ProjectGenerator {
         '@commitlint/cli': '^18.4.3',
         '@commitlint/config-conventional': '^18.4.3',
         'prettier': '^3.1.1',
-        'eslint': '^8.56.0',
-        '@typescript-eslint/eslint-plugin': '^6.18.0',
-        '@typescript-eslint/parser': '^6.18.0',
+        'eslint': '^9.39.0',
+        '@typescript-eslint/eslint-plugin': '^8.27.0',
+        '@typescript-eslint/parser': '^8.27.0',
       },
     };
 
@@ -379,13 +379,13 @@ MIT
       },
       devDependencies: {
         '@types/node': '^20.10.0',
-        '@types/bcrypt': service.features.jwt ? '^5.1.1' : undefined,
+        '@types/bcrypt': service.features.jwt ? '^6.0.0' : undefined,
         'typescript': '^5.3.3',
         'tsx': '^4.7.0',
         'jest': '^29.7.0',
         '@types/jest': '^29.5.11',
-        'supertest': '^6.3.3',
-        '@types/supertest': '^6.0.2',
+        'supertest': '^7.1.4',
+        '@types/supertest': '^6.0.3',
       },
     };
 
