@@ -108,3 +108,5 @@ coverage/
 .output/
 output/
 generated-projects/
+.test-output/
+packages/cli/.test-output/

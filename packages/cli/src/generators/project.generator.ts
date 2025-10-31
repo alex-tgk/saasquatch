@@ -1602,42 +1602,81 @@ Redis persistence is configured via RDB snapshots and AOF logs.
   }
 
   private async initializeGit(projectDir: string): Promise<void> {
+    const spinner = ora('Initializing Git repository...').start();
+    
     try {
-      const spinner = ora('Initializing Git repository...').start();
-      
       // Check if git is available
+      spinner.text = 'Checking for git...';
       try {
-        await execaCommand('git --version', { cwd: projectDir, timeout: 5000 });
-      } catch {
+        const gitVersion = await execaCommand('git --version', { cwd: projectDir, timeout: 5000 });
+        spinner.text = `Found ${gitVersion.stdout.trim()}`;
+      } catch (error) {
         spinner.info('Git not found, skipping repository initialization');
         return;
       }
 
       // Initialize git repo
-      await execaCommand('git init', { cwd: projectDir, timeout: 5000 });
+      spinner.text = 'Running git init...';
+      const initResult = await execaCommand('git init', { cwd: projectDir, timeout: 5000 });
+      console.log(chalk.gray(`  ${initResult.stdout}`));
       
       // Configure git to skip hooks
-      await execaCommand('git config core.hooksPath /dev/null', { cwd: projectDir, timeout: 5000 }).catch(() => {});
+      spinner.text = 'Configuring git (disabling hooks)...';
+      try {
+        await execaCommand('git config core.hooksPath /dev/null', { cwd: projectDir, timeout: 5000 });
+        console.log(chalk.gray('  Hooks disabled'));
+      } catch (e) {
+        console.log(chalk.gray('  Could not disable hooks (continuing anyway)'));
+      }
+      
+      // Stage files
+      spinner.text = 'Staging files (git add .)...';
+      const addStart = Date.now();
+      try {
+        await execaCommand('git add .', { cwd: projectDir, timeout: 10000 });
+        console.log(chalk.gray(`  Staged in ${Date.now() - addStart}ms`));
+      } catch (error) {
+        spinner.fail('Failed to stage files');
+        if (error instanceof Error) {
+          console.log(chalk.red(`  Error: ${error.message}`));
+        }
+        return;
+      }
       
       // Make initial commit
-      await execaCommand('git add .', { cwd: projectDir, timeout: 10000 });
-      await execaCommand('git commit -m "Initial commit: Project scaffolded by SaaSquatch CLI" --no-verify', { 
-        cwd: projectDir,
-        timeout: 15000,
-        env: {
-          GIT_AUTHOR_NAME: 'SaaSquatch CLI',
-          GIT_AUTHOR_EMAIL: 'cli@saasquatch.dev',
-          GIT_COMMITTER_NAME: 'SaaSquatch CLI',
-          GIT_COMMITTER_EMAIL: 'cli@saasquatch.dev',
+      spinner.text = 'Creating initial commit...';
+      const commitStart = Date.now();
+      try {
+        const commitResult = await execaCommand(
+          'git commit -m "Initial commit: Project scaffolded by SaaSquatch CLI" --no-verify --no-gpg-sign', 
+          { 
+            cwd: projectDir,
+            timeout: 15000,
+            env: {
+              ...process.env,
+              GIT_AUTHOR_NAME: 'SaaSquatch CLI',
+              GIT_AUTHOR_EMAIL: 'cli@saasquatch.dev',
+              GIT_COMMITTER_NAME: 'SaaSquatch CLI',
+              GIT_COMMITTER_EMAIL: 'cli@saasquatch.dev',
+              GIT_TERMINAL_PROMPT: '0', // Disable terminal prompts
+            }
+          }
+        );
+        console.log(chalk.gray(`  Committed in ${Date.now() - commitStart}ms`));
+        console.log(chalk.gray(`  ${commitResult.stdout}`));
+        spinner.succeed('Git repository initialized');
+      } catch (error) {
+        spinner.fail('Failed to create initial commit');
+        if (error instanceof Error) {
+          console.log(chalk.red(`  Error: ${error.message}`));
+          console.log(chalk.gray(`  Timeout after ${Date.now() - commitStart}ms`));
         }
-      });
-      
-      spinner.succeed('Git repository initialized');
+      }
     } catch (error) {
-      // Git initialization is optional, don't fail if it doesn't work
-      console.log(chalk.yellow('  ⚠️  Could not initialize git repository (optional)'));
+      spinner.fail('Git initialization failed');
+      console.log(chalk.yellow('  ⚠️  Continuing without git repository'));
       if (error instanceof Error) {
-        console.log(chalk.gray(`    ${error.message}`));
+        console.log(chalk.gray(`  ${error.message}`));
       }
     }
   }
