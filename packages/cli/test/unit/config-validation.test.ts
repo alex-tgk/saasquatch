@@ -1,9 +1,10 @@
 import { describe, it, expect } from '@jest/globals';
-import { configSchema } from '../../src/types/config.types.js';
+import { ConfigSchema as configSchema } from '../../src/types/config.types.js';
 
 describe('Configuration Validation', () => {
   it('should validate a complete valid configuration', () => {
     const validConfig = {
+      version: '1.0.0',
       project: {
         name: 'my-project',
         description: 'Test project',
@@ -32,7 +33,7 @@ describe('Configuration Validation', () => {
         {
           name: 'auth-service',
           port: 3001,
-          type: 'service',
+          type: 'auth',
           features: {
             database: true,
             cache: true,
@@ -51,9 +52,7 @@ describe('Configuration Validation', () => {
           provider: 'pino',
           level: 'info',
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
           enabled: false,
         },
@@ -61,14 +60,19 @@ describe('Configuration Validation', () => {
       deployment: {
         target: 'docker-compose',
       },
+      useCases: [],
     };
 
     const result = configSchema.safeParse(validConfig);
+    if (!result.success) {
+      console.error('Validation errors:', result.error.issues);
+    }
     expect(result.success).toBe(true);
   });
 
   it('should reject invalid project names', () => {
     const invalidConfig = {
+      version: '1.0.0',
       project: {
         name: 'My Project!', // Invalid characters
         description: 'Test project',
@@ -93,15 +97,19 @@ describe('Configuration Validation', () => {
           version: '2.10',
         },
       },
-      services: [],
+      services: [
+        {
+          name: 'test-service',
+          port: 3001,
+          features: {},
+        },
+      ],
       observability: {
         logging: {
           provider: 'pino',
           level: 'info',
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
           enabled: false,
         },
@@ -109,6 +117,7 @@ describe('Configuration Validation', () => {
       deployment: {
         target: 'docker-compose',
       },
+      useCases: [],
     };
 
     const result = configSchema.safeParse(invalidConfig);
@@ -117,6 +126,7 @@ describe('Configuration Validation', () => {
 
   it('should reject invalid port numbers', () => {
     const invalidConfig = {
+      version: '1.0.0',
       project: {
         name: 'my-project',
         description: 'Test project',
@@ -145,18 +155,7 @@ describe('Configuration Validation', () => {
         {
           name: 'auth-service',
           port: 99999, // Invalid port
-          type: 'service',
-          features: {
-            database: true,
-            cache: true,
-            messageQueue: true,
-            authentication: true,
-            jwt: true,
-            healthChecks: true,
-            cors: true,
-            rateLimit: true,
-            compression: true,
-          },
+          features: {},
         },
       ],
       observability: {
@@ -164,9 +163,7 @@ describe('Configuration Validation', () => {
           provider: 'pino',
           level: 'info',
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
           enabled: false,
         },
@@ -174,6 +171,7 @@ describe('Configuration Validation', () => {
       deployment: {
         target: 'docker-compose',
       },
+      useCases: [],
     };
 
     const result = configSchema.safeParse(invalidConfig);
@@ -182,6 +180,7 @@ describe('Configuration Validation', () => {
 
   it('should accept SQLite as database type', () => {
     const validConfig = {
+      version: '1.0.0',
       project: {
         name: 'my-project',
         description: 'Test project',
@@ -206,15 +205,19 @@ describe('Configuration Validation', () => {
           version: '2.10',
         },
       },
-      services: [],
+      services: [
+        {
+          name: 'test-service',
+          port: 3001,
+          features: {},
+        },
+      ],
       observability: {
         logging: {
           provider: 'pino',
           level: 'info',
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
           enabled: false,
         },
@@ -222,14 +225,19 @@ describe('Configuration Validation', () => {
       deployment: {
         target: 'docker-compose',
       },
+      useCases: [],
     };
 
     const result = configSchema.safeParse(validConfig);
+    if (!result.success) {
+      console.error('Validation errors:', result.error.issues);
+    }
     expect(result.success).toBe(true);
   });
 
   it('should require at least one service', () => {
     const invalidConfig = {
+      version: '1.0.0',
       project: {
         name: 'my-project',
         description: 'Test project',
@@ -260,9 +268,7 @@ describe('Configuration Validation', () => {
           provider: 'pino',
           level: 'info',
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
           enabled: false,
         },
@@ -270,11 +276,11 @@ describe('Configuration Validation', () => {
       deployment: {
         target: 'docker-compose',
       },
+      useCases: [],
     };
 
     const result = configSchema.safeParse(invalidConfig);
-    // Depending on schema definition, this might pass or fail
-    // Adjust based on actual schema requirements
-    expect(result.success).toBe(true); // Schema allows empty services
+    // Schema requires at least 1 service
+    expect(result.success).toBe(false);
   });
 });

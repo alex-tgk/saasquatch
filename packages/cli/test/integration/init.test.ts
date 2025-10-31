@@ -1,18 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
 import fs from 'fs-extra';
 import path from 'path';
-import { execaCommand } from 'execa';
-import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 describe('saasquatch init command', () => {
-  const testOutputDir = path.join(__dirname, '../../.test-output');
+  const testOutputDir = path.resolve(process.cwd(), '.test-output');
   const projectName = 'test-project';
   const projectPath = path.join(testOutputDir, projectName);
-  const cliPath = path.join(__dirname, '../../dist/cli.js');
 
   beforeEach(async () => {
     // Clean up test output directory
