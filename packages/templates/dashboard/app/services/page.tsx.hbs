@@ -1,0 +1,88 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { ServiceCard } from '@/components/ServiceCard'
+import { Input } from '@/components/ui/input'
+import { Search } from 'lucide-react'
+import { services, dashboardConfig } from '@/lib/service-config'
+import { checkServiceHealth, checkServiceReadiness } from '@/lib/api-client'
+import type { ServiceStatus } from '@/lib/types'
+import { useRouter } from 'next/navigation'
+
+export default function ServicesPage() {
+  const router = useRouter()
+  const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[]>([])
+  const [search, setSearch] = useState('')
+  const [loading, setLoading] = useState(true)
+
+  const fetchServiceStatuses = async () => {
+    const statuses = await Promise.all(
+      services.map(async (service) => {
+        const health = await checkServiceHealth(service.name)
+        const readiness = service.features.database || service.features.cache || service.features.messageQueue
+          ? await checkServiceReadiness(service.name)
+          : undefined
+
+        return {
+          name: service.name,
+          displayName: service.displayName,
+          health,
+          readiness,
+          lastChecked: new Date().toISOString(),
+        } as ServiceStatus
+      })
+    )
+
+    setServiceStatuses(statuses)
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchServiceStatuses()
+    const interval = setInterval(fetchServiceStatuses, dashboardConfig.healthCheckInterval)
+    return () => clearInterval(interval)
+  }, [])
+
+  const filteredServices = serviceStatuses.filter((service) =>
+    service.displayName.toLowerCase().includes(search.toLowerCase()) ||
+    service.name.toLowerCase().includes(search.toLowerCase())
+  )
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Services</h1>
+        <p className="text-muted-foreground">Monitor all microservices health and status</p>
+      </div>
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search services..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-8"
+        />
+      </div>
+
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="h-64 animate-pulse rounded-lg bg-muted" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {filteredServices.map((service) => (
+            <ServiceCard
+              key={service.name}
+              service={service}
+              onViewLogs={() => router.push(`/logs?service=${service.name}`)}
+              onViewMetrics={() => router.push(`/metrics?service=${service.name}`)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}

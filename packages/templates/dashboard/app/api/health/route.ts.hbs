@@ -1,0 +1,60 @@
+import { NextResponse } from 'next/server'
+import { services } from '@/lib/service-config'
+
+export async function GET() {
+  try {
+    const healthChecks = await Promise.all(
+      services.map(async (service) => {
+        try {
+          const response = await fetch(`${service.url}/health`, {
+            signal: AbortSignal.timeout(5000),
+          })
+
+          if (!response.ok) {
+            return {
+              service: service.name,
+              status: 'unhealthy',
+              error: `HTTP ${response.status}`,
+            }
+          }
+
+          const data = await response.json()
+          return {
+            service: service.name,
+            status: 'healthy',
+            ...data,
+          }
+        } catch (error) {
+          return {
+            service: service.name,
+            status: 'offline',
+            error: error instanceof Error ? error.message : 'Unknown error',
+          }
+        }
+      })
+    )
+
+    const healthyCount = healthChecks.filter((c) => c.status === 'healthy').length
+    const overallStatus = healthyCount === services.length ? 'healthy' :
+                         healthyCount > 0 ? 'degraded' : 'unhealthy'
+
+    return NextResponse.json({
+      status: overallStatus,
+      timestamp: new Date().toISOString(),
+      services: healthChecks,
+      summary: {
+        total: services.length,
+        healthy: healthyCount,
+        unhealthy: services.length - healthyCount,
+      },
+    })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}

@@ -1,0 +1,76 @@
+export interface ServiceConfig {
+  name: string
+  displayName: string
+  url: string
+  port: number
+  description: string
+  features: {
+    database?: boolean
+    cache?: boolean
+    messageQueue?: boolean
+    authentication?: boolean
+  }
+}
+
+export const services: ServiceConfig[] = [
+  {{#each services}}
+  {
+    name: '{{this.name}}',
+    displayName: '{{capitalize this.name}}',
+    url: process.env.NEXT_PUBLIC_{{uppercase this.name}}_URL || 'http://localhost:{{this.port}}',
+    port: {{this.port}},
+    description: '{{this.description}}',
+    features: {
+      database: {{#if this.features.database}}true{{else}}false{{/if}},
+      cache: {{#if this.features.cache}}true{{else}}false{{/if}},
+      messageQueue: {{#if this.features.messageQueue}}true{{else}}false{{/if}},
+      authentication: {{#if this.features.authentication}}true{{else}}false{{/if}},
+    },
+  },
+  {{/each}}
+]
+
+export const infrastructure = {
+  database: {
+    type: '{{infrastructure.database.type}}',
+    url: process.env.NEXT_PUBLIC_DATABASE_URL || '',
+    multiTenancy: {{#if infrastructure.database.multiTenancy}}true{{else}}false{{/if}},
+  },
+  cache: {
+    type: '{{infrastructure.cache.type}}',
+    url: process.env.NEXT_PUBLIC_REDIS_URL || 'redis://localhost:6379',
+  },
+  messageQueue: {
+    type: '{{infrastructure.messageQueue.type}}',
+    url: process.env.NEXT_PUBLIC_NATS_URL || 'http://localhost:8222',
+  },
+}
+
+export const projectConfig = {
+  name: '{{project.name}}',
+  description: '{{project.description}}',
+  version: '{{project.version}}',
+}
+
+export const dashboardConfig = {
+  port: parseInt(process.env.NEXT_PUBLIC_DASHBOARD_PORT || '{{dashboard.port}}'),
+  healthCheckInterval: parseInt(process.env.NEXT_PUBLIC_HEALTH_CHECK_INTERVAL || '5000'),
+  logsPollInterval: parseInt(process.env.NEXT_PUBLIC_LOGS_POLL_INTERVAL || '2000'),
+  metricsPollInterval: parseInt(process.env.NEXT_PUBLIC_METRICS_POLL_INTERVAL || '10000'),
+  features: {
+    serviceControls: process.env.NEXT_PUBLIC_ENABLE_SERVICE_CONTROLS === 'true',
+    redisManagement: process.env.NEXT_PUBLIC_ENABLE_REDIS_MANAGEMENT === 'true',
+    natsInspector: process.env.NEXT_PUBLIC_ENABLE_NATS_INSPECTOR === 'true',
+  },
+}
+
+export function getServiceByName(name: string): ServiceConfig | undefined {
+  return services.find(s => s.name === name)
+}
+
+export function getAllServiceUrls(): Record<string, string> {
+  return services.reduce((acc, service) => {
+    acc[service.name] = service.url
+    return acc
+  }, {} as Record<string, string>)
+}

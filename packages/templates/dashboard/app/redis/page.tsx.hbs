@@ -1,0 +1,80 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { RedisViewer } from '@/components/RedisViewer'
+import type { RedisKey } from '@/lib/types'
+
+export default function RedisPage() {
+  const [keys, setKeys] = useState<RedisKey[]>([])
+
+  useEffect(() => {
+    // Mock data for demonstration
+    // In production, fetch real data from Redis API
+    const mockKeys: RedisKey[] = [
+      {
+        key: 'session:user:123',
+        type: 'string',
+        ttl: 3600,
+        size: 256,
+      },
+      {
+        key: 'auth:token:abc123',
+        type: 'string',
+        ttl: 1800,
+        size: 512,
+      },
+      {
+        key: 'cache:user:profile:123',
+        type: 'hash',
+        ttl: -1,
+        size: 1024,
+      },
+      {
+        key: 'ratelimit:ip:192.168.1.1',
+        type: 'string',
+        ttl: 300,
+        size: 64,
+      },
+      {
+        key: 'blacklist:token:xyz789',
+        type: 'set',
+        ttl: 86400,
+        size: 128,
+      },
+    ]
+
+    setKeys(mockKeys)
+  }, [])
+
+  const handleRefresh = () => {
+    console.log('Refreshing Redis keys...')
+  }
+
+  const handleDelete = (key: string) => {
+    console.log('Deleting key:', key)
+    setKeys(keys.filter((k) => k.key !== key))
+  }
+
+  const handleViewValue = (key: string) => {
+    console.log('Viewing value for key:', key)
+    // In production, fetch and display the actual value
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Redis Cache</h1>
+        <p className="text-muted-foreground">
+          Inspect and manage Redis cache keys and values
+        </p>
+      </div>
+
+      <RedisViewer
+        keys={keys}
+        onRefresh={handleRefresh}
+        onDelete={handleDelete}
+        onViewValue={handleViewValue}
+      />
+    </div>
+  )
+}

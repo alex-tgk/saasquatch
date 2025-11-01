@@ -1,0 +1,68 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+export async function GET(request: NextRequest) {
+  const action = request.nextUrl.searchParams.get('action') || 'keys'
+
+  try {
+    // In production, connect to Redis using ioredis
+    // For now, return mock data
+
+    if (action === 'keys') {
+      const pattern = request.nextUrl.searchParams.get('pattern') || '*'
+
+      const keys = [
+        { key: 'session:user:123', type: 'string', ttl: 3600, size: 256 },
+        { key: 'auth:token:abc', type: 'string', ttl: 1800, size: 512 },
+        { key: 'cache:user:123', type: 'hash', ttl: -1, size: 1024 },
+      ]
+
+      return NextResponse.json({ keys })
+    }
+
+    if (action === 'get') {
+      const key = request.nextUrl.searchParams.get('key')
+
+      if (!key) {
+        return NextResponse.json({ error: 'Key is required' }, { status: 400 })
+      }
+
+      const value = {
+        key,
+        value: { example: 'data' },
+        type: 'string',
+        ttl: 3600,
+      }
+
+      return NextResponse.json({ value })
+    }
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
+
+export async function DELETE(request: NextRequest) {
+  const key = request.nextUrl.searchParams.get('key')
+
+  if (!key) {
+    return NextResponse.json({ error: 'Key is required' }, { status: 400 })
+  }
+
+  try {
+    // In production, delete from Redis
+    return NextResponse.json({ success: true, key })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}

@@ -1,0 +1,370 @@
+# {{project.name}} Dashboard
+
+A real-time monitoring and management dashboard for {{project.name}} microservices, built with Next.js 14, React Server Components, and shadcn/ui.
+
+## Features
+
+- **Real-time Service Monitoring** - Live health checks and status updates for all microservices
+- **Service Logs Viewer** - Real-time log streaming with filtering and search
+- **Performance Metrics** - CPU, memory, request rate, and latency visualization
+- **NATS Inspector** - Monitor message streams and event flow
+- **Redis Cache Viewer** - Inspect and manage Redis keys and values
+- **Responsive Design** - Beautiful UI that works on desktop, tablet, and mobile
+- **Dark Mode Support** - Automatic theme switching
+- **Service Controls** - Start, stop, and restart services (when enabled)
+
+## Tech Stack
+
+- **Framework**: Next.js 14 (App Router)
+- **UI Library**: React 18
+- **Styling**: Tailwind CSS
+- **Components**: shadcn/ui (Radix UI primitives)
+- **Charts**: Recharts
+- **Icons**: Lucide React
+- **Type Safety**: TypeScript (strict mode)
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 20+ installed
+- All microservices running (or at least some for testing)
+- Infrastructure services running (Redis, NATS, PostgreSQL)
+
+### Installation
+
+```bash
+# Install dependencies
+pnpm install
+
+# Or with npm
+npm install
+
+# Or with yarn
+yarn install
+```
+
+### Environment Variables
+
+Copy the `.env.example` file to `.env.local`:
+
+```bash
+cp .env.example .env.local
+```
+
+Edit `.env.local` with your service URLs:
+
+```env
+# Dashboard Configuration
+NEXT_PUBLIC_DASHBOARD_PORT={{dashboard.port}}
+NEXT_PUBLIC_PROJECT_NAME={{project.name}}
+
+# Service URLs
+{{#each services}}
+NEXT_PUBLIC_{{uppercase this.name}}_URL=http://localhost:{{this.port}}
+{{/each}}
+
+# Infrastructure URLs
+NEXT_PUBLIC_REDIS_URL=redis://localhost:6379
+NEXT_PUBLIC_NATS_URL=http://localhost:8222
+
+# Monitoring Configuration
+NEXT_PUBLIC_HEALTH_CHECK_INTERVAL=5000
+NEXT_PUBLIC_LOGS_POLL_INTERVAL=2000
+NEXT_PUBLIC_METRICS_POLL_INTERVAL=10000
+```
+
+### Development
+
+```bash
+# Start the development server
+pnpm dev
+
+# Or
+npm run dev
+```
+
+Open [http://localhost:{{dashboard.port}}](http://localhost:{{dashboard.port}}) in your browser.
+
+### Production Build
+
+```bash
+# Build for production
+pnpm build
+
+# Start production server
+pnpm start
+```
+
+## Dashboard Pages
+
+### Overview (`/`)
+
+The main dashboard provides:
+- Total services count
+- Health status summary
+- Quick stats (uptime, healthy services, issues)
+- Service cards with health indicators
+- Quick links to other pages
+
+### Services (`/services`)
+
+Monitor all microservices:
+- Service health status (healthy, degraded, unhealthy, offline)
+- Uptime tracking
+- Version information
+- Dependency checks (database, cache, message queue)
+- Quick actions (view logs, view metrics)
+
+### Logs (`/logs`)
+
+Real-time log viewer:
+- Stream logs from all services or filter by service
+- Search logs by message or context
+- Filter by log level (debug, info, warn, error, fatal)
+- Auto-scroll toggle
+- Download logs as JSON
+- Clear logs
+
+### Metrics (`/metrics`)
+
+Performance monitoring:
+- CPU and memory usage charts
+- Request rate and error rate
+- Response latency (p50, p95, p99)
+- Per-service metrics
+- Time-series visualization
+
+### NATS Inspector (`/nats`)
+
+Message queue monitoring:
+- List all NATS streams
+- View stream subjects and consumers
+- Inspect individual messages
+- Message sequence tracking
+- Stream statistics (message count, size)
+
+### Redis Cache (`/redis`)
+
+Cache management:
+- List all Redis keys
+- Search keys by pattern
+- View key details (type, TTL, size)
+- View key values
+- Delete keys
+- TTL countdown
+
+## Architecture
+
+### Directory Structure
+
+```
+dashboard/
+├── app/                    # Next.js App Router
+│   ├── api/               # API routes
+│   │   ├── health/        # Health check aggregation
+│   │   ├── logs/          # Log streaming (SSE)
+│   │   ├── metrics/       # Metrics endpoints
+│   │   ├── nats/          # NATS operations
+│   │   └── redis/         # Redis operations
+│   ├── services/          # Services page
+│   ├── logs/              # Logs page
+│   ├── metrics/           # Metrics page
+│   ├── nats/              # NATS page
+│   ├── redis/             # Redis page
+│   ├── layout.tsx         # Root layout
+│   ├── page.tsx           # Home page
+│   └── globals.css        # Global styles
+├── components/            # React components
+│   ├── ui/               # shadcn/ui components
+│   ├── ServiceCard.tsx   # Service health card
+│   ├── LogsViewer.tsx    # Real-time logs
+│   ├── MetricsChart.tsx  # Charts component
+│   ├── NATSInspector.tsx # NATS monitor
+│   ├── RedisViewer.tsx   # Redis viewer
+│   └── Navbar.tsx        # Navigation
+├── lib/                   # Utilities
+│   ├── api-client.ts     # API client
+│   ├── service-config.ts # Service configuration
+│   ├── types.ts          # TypeScript types
+│   └── utils.ts          # Helper functions
+└── public/               # Static assets
+```
+
+### Real-time Updates
+
+The dashboard uses multiple strategies for real-time updates:
+
+1. **Polling** - Health checks every 5 seconds (configurable)
+2. **Server-Sent Events (SSE)** - For log streaming
+3. **WebSockets** - Optional, for future enhancements
+
+### API Integration
+
+The dashboard connects to services via:
+
+- **Health Endpoints**: `GET /health` on each service
+- **Readiness Endpoints**: `GET /ready` on each service
+- **Metrics Endpoints**: Custom metrics endpoints (optional)
+- **NATS Monitoring API**: Port 8222 (default)
+- **Redis**: Direct connection via API routes
+
+## Customization
+
+### Adding a New Service
+
+1. Services are automatically loaded from `lib/service-config.ts`
+2. Add your service to the `services` array in the config
+3. Ensure the service has `/health` and `/ready` endpoints
+4. The dashboard will automatically detect and monitor it
+
+### Custom Metrics
+
+To add custom metrics:
+
+1. Implement a metrics endpoint on your service (e.g., `/metrics`)
+2. Update `app/api/metrics/route.ts` to fetch from your endpoint
+3. Add new chart components in `components/MetricsChart.tsx`
+
+### Styling
+
+The dashboard uses Tailwind CSS and shadcn/ui:
+
+- Modify `tailwind.config.ts` for theme customization
+- Edit CSS variables in `app/globals.css` for colors
+- Components are in `components/ui/` and fully customizable
+
+## Monitoring Endpoints
+
+For the dashboard to work effectively, your services should implement:
+
+### Health Check Endpoint
+
+```typescript
+GET /health
+
+Response:
+{
+  "status": "healthy" | "degraded" | "unhealthy",
+  "uptime": 3600,
+  "timestamp": "2025-10-31T12:00:00Z",
+  "version": "0.1.0"
+}
+```
+
+### Readiness Check Endpoint
+
+```typescript
+GET /ready
+
+Response:
+{
+  "status": "ready" | "not_ready",
+  "checks": {
+    "database": { "status": "connected", "latency": 5 },
+    "cache": { "status": "connected", "latency": 2 },
+    "messageQueue": { "status": "connected", "latency": 3 }
+  }
+}
+```
+
+### Metrics Endpoint (Optional)
+
+```typescript
+GET /metrics
+
+Response:
+{
+  "cpu": { "usage": 2500000000, "percentage": 62.5 },
+  "memory": { "used": 1000000000, "total": 4000000000, "percentage": 25 },
+  "requests": { "total": 50000, "success": 49500, "error": 500, "rps": 100 },
+  "latency": { "p50": 25, "p95": 150, "p99": 300 },
+  "timestamp": "2025-10-31T12:00:00Z"
+}
+```
+
+## Troubleshooting
+
+### Services Show as Offline
+
+- Verify services are running
+- Check service URLs in `.env.local`
+- Ensure services have `/health` endpoints
+- Check CORS settings on services
+
+### Logs Not Streaming
+
+- Verify the logs API route is working
+- Check browser console for errors
+- Ensure Server-Sent Events are not blocked
+
+### Metrics Not Showing
+
+- Verify services have metrics endpoints
+- Check the `/api/metrics` route
+- Ensure data format matches expected types
+
+### Redis/NATS Not Working
+
+- Verify infrastructure services are running
+- Check connection URLs in environment variables
+- Ensure API routes have proper permissions
+
+## Performance
+
+The dashboard is optimized for:
+
+- **Fast Initial Load**: Server-side rendering with Next.js
+- **Efficient Updates**: Polling intervals are configurable
+- **Low Resource Usage**: React Server Components reduce client-side JavaScript
+- **Responsive UI**: Tailwind CSS for optimal performance
+
+### Configuration
+
+Adjust polling intervals in `.env.local`:
+
+```env
+# Health checks every 5 seconds
+NEXT_PUBLIC_HEALTH_CHECK_INTERVAL=5000
+
+# Logs update every 2 seconds
+NEXT_PUBLIC_LOGS_POLL_INTERVAL=2000
+
+# Metrics update every 10 seconds
+NEXT_PUBLIC_METRICS_POLL_INTERVAL=10000
+```
+
+## Security
+
+- All API routes validate inputs
+- Service URLs are configurable via environment variables
+- No sensitive data is logged or exposed
+- CORS is configured for localhost only in development
+
+## Contributing
+
+To contribute to the dashboard:
+
+1. Make changes in `packages/templates/dashboard/`
+2. Test with `pnpm dev`
+3. Build with `pnpm build`
+4. Ensure TypeScript compiles without errors
+5. Test all features work correctly
+
+## License
+
+This dashboard is part of {{project.name}} and follows the same license.
+
+## Support
+
+For issues or questions:
+
+- Check the main project README
+- Review service documentation
+- Check service health endpoints
+- Verify environment variables
+
+---
+
+**Built with**
+Next.js 14 | React 18 | Tailwind CSS | shadcn/ui | TypeScript | Recharts

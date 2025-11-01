@@ -1,0 +1,193 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { ServiceCard } from '@/components/ServiceCard'
+import { Activity, AlertCircle, CheckCircle, Server, TrendingUp } from 'lucide-react'
+import { services, dashboardConfig } from '@/lib/service-config'
+import { checkServiceHealth, checkServiceReadiness } from '@/lib/api-client'
+import type { ServiceStatus, DashboardStats } from '@/lib/types'
+import { useRouter } from 'next/navigation'
+
+export default function DashboardPage() {
+  const router = useRouter()
+  const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[]>([])
+  const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetchServiceStatuses = async () => {
+    const statuses = await Promise.all(
+      services.map(async (service) => {
+        const health = await checkServiceHealth(service.name)
+        const readiness = service.features.database || service.features.cache || service.features.messageQueue
+          ? await checkServiceReadiness(service.name)
+          : undefined
+
+        return {
+          name: service.name,
+          displayName: service.displayName,
+          health,
+          readiness,
+          lastChecked: new Date().toISOString(),
+        } as ServiceStatus
+      })
+    )
+
+    setServiceStatuses(statuses)
+
+    // Calculate stats
+    const healthy = statuses.filter(s => s.health.status === 'healthy').length
+    const degraded = statuses.filter(s => s.health.status === 'degraded').length
+    const unhealthy = statuses.filter(s => s.health.status === 'unhealthy' || s.health.status === 'offline').length
+
+    const totalUptime = statuses.reduce((acc, s) => acc + s.health.uptime, 0)
+    const avgUptime = statuses.length > 0 ? totalUptime / statuses.length : 0
+
+    setStats({
+      totalServices: statuses.length,
+      healthyServices: healthy,
+      degradedServices: degraded,
+      unhealthyServices: unhealthy,
+      totalRequests: 0,
+      errorRate: 0,
+      avgLatency: 0,
+      uptime: avgUptime,
+    })
+
+    setLoading(false)
+  }
+
+  useEffect(() => {
+    fetchServiceStatuses()
+
+    // Poll for updates
+    const interval = setInterval(fetchServiceStatuses, dashboardConfig.healthCheckInterval)
+    return () => clearInterval(interval)
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex h-[60vh] items-center justify-center">
+        <div className="text-center">
+          <Activity className="mx-auto h-12 w-12 animate-pulse text-primary" />
+          <p className="mt-4 text-muted-foreground">Loading dashboard...</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-8">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
+        <p className="text-muted-foreground">
+          Monitor the health and performance of your microservices
+        </p>
+      </div>
+
+      {/* Stats Grid */}
+      {stats && (
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Services</CardTitle>
+              <Server className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{stats.totalServices}</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.healthyServices} healthy, {stats.unhealthyServices} down
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Healthy Services</CardTitle>
+              <CheckCircle className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{stats.healthyServices}</div>
+              <p className="text-xs text-muted-foreground">
+                {stats.totalServices > 0
+                  ? `${Math.round((stats.healthyServices / stats.totalServices) * 100)}% uptime`
+                  : 'N/A'
+                }
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Issues</CardTitle>
+              <AlertCircle className="h-4 w-4 text-yellow-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-yellow-600">
+                {stats.degradedServices + stats.unhealthyServices}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {stats.degradedServices} degraded, {stats.unhealthyServices} offline
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Uptime</CardTitle>
+              <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                {Math.floor(stats.uptime / 3600)}h
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {Math.floor((stats.uptime % 3600) / 60)}m {Math.floor(stats.uptime % 60)}s
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Services Grid */}
+      <div>
+        <h2 className="mb-4 text-2xl font-bold">Services</h2>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {serviceStatuses.map((service) => (
+            <ServiceCard
+              key={service.name}
+              service={service}
+              onViewLogs={() => router.push(`/logs?service=${service.name}`)}
+              onViewMetrics={() => router.push(`/metrics?service=${service.name}`)}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Quick Links */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="cursor-pointer transition-all hover:shadow-md" onClick={() => router.push('/logs')}>
+          <CardHeader>
+            <CardTitle className="text-base">View Logs</CardTitle>
+            <CardDescription>Monitor real-time service logs</CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="cursor-pointer transition-all hover:shadow-md" onClick={() => router.push('/metrics')}>
+          <CardHeader>
+            <CardTitle className="text-base">View Metrics</CardTitle>
+            <CardDescription>Analyze performance metrics</CardDescription>
+          </CardHeader>
+        </Card>
+
+        <Card className="cursor-pointer transition-all hover:shadow-md" onClick={() => router.push('/nats')}>
+          <CardHeader>
+            <CardTitle className="text-base">NATS Inspector</CardTitle>
+            <CardDescription>Monitor message queue</CardDescription>
+          </CardHeader>
+        </Card>
+      </div>
+    </div>
+  )
+}

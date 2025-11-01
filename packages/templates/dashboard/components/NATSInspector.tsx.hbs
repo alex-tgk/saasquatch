@@ -1,0 +1,148 @@
+'use client'
+
+import { useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Separator } from '@/components/ui/separator'
+import { MessageSquare, RefreshCw } from 'lucide-react'
+import { formatBytes, formatTimestamp } from '@/lib/utils'
+import type { NATSStream, NATSMessage } from '@/lib/types'
+
+interface NATSInspectorProps {
+  streams: NATSStream[]
+  messages: NATSMessage[]
+  onRefresh?: () => void
+}
+
+export function NATSInspector({ streams, messages, onRefresh }: NATSInspectorProps) {
+  const [selectedStream, setSelectedStream] = useState<string | null>(null)
+
+  const streamMessages = selectedStream
+    ? messages.filter((msg) => msg.subject.startsWith(selectedStream))
+    : messages
+
+  return (
+    <Card className="h-full">
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              NATS Inspector
+            </CardTitle>
+            <CardDescription>Monitor NATS streams and messages</CardDescription>
+          </div>
+          <Button size="sm" variant="outline" onClick={onRefresh}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <Tabs defaultValue="streams" className="space-y-4">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="streams">Streams</TabsTrigger>
+            <TabsTrigger value="messages">Messages</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="streams" className="space-y-4">
+            {streams.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-muted-foreground">
+                No streams found
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {streams.map((stream) => (
+                  <Card
+                    key={stream.name}
+                    className={`cursor-pointer transition-all ${
+                      selectedStream === stream.name ? 'ring-2 ring-primary' : ''
+                    }`}
+                    onClick={() => setSelectedStream(stream.name)}
+                  >
+                    <CardHeader className="pb-3">
+                      <div className="flex items-center justify-between">
+                        <CardTitle className="text-base">{stream.name}</CardTitle>
+                        <Badge variant="secondary">{stream.consumers} consumers</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Messages:</span>
+                        <span className="font-medium">{stream.messages.toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Size:</span>
+                        <span className="font-medium">{formatBytes(stream.bytes)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">Created:</span>
+                        <span className="font-medium">{formatTimestamp(stream.created)}</span>
+                      </div>
+                      <Separator className="my-2" />
+                      <div className="space-y-1">
+                        <p className="text-xs text-muted-foreground">Subjects:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {stream.subjects.map((subject, idx) => (
+                            <Badge key={idx} variant="outline" className="text-xs">
+                              {subject}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="messages" className="space-y-4">
+            {selectedStream && (
+              <Badge variant="secondary" className="mb-2">
+                Filtering: {selectedStream}
+              </Badge>
+            )}
+            {streamMessages.length === 0 ? (
+              <div className="flex h-48 items-center justify-center text-muted-foreground">
+                No messages found
+              </div>
+            ) : (
+              <div className="max-h-[500px] space-y-2 overflow-auto">
+                {streamMessages.map((message, idx) => (
+                  <Card key={idx}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-center justify-between">
+                        <Badge variant="outline" className="font-mono text-xs">
+                          #{message.sequence}
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {formatTimestamp(message.timestamp)}
+                        </span>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium">{message.subject}</span>
+                        {message.redelivered && (
+                          <Badge variant="warning" className="text-xs">
+                            Redelivered
+                          </Badge>
+                        )}
+                      </div>
+                      <Separator />
+                      <pre className="rounded bg-muted p-2 text-xs overflow-x-auto">
+                        {JSON.stringify(message.data, null, 2)}
+                      </pre>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
+      </CardContent>
+    </Card>
+  )
+}

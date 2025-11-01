@@ -1,0 +1,35 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  reactStrictMode: true,
+  poweredByHeader: false,
+  compress: true,
+
+  env: {
+    PROJECT_NAME: '{{project.name}}',
+    DASHBOARD_PORT: '{{dashboard.port}}',
+  },
+
+  // Optimize for production
+  swcMinify: true,
+
+  // Enable experimental features
+  experimental: {
+    serverActions: {
+      allowedOrigins: ['localhost:{{dashboard.port}}'],
+    },
+  },
+
+  // API rewrites for service proxying
+  async rewrites() {
+    return [
+      {{#each services}}
+      {
+        source: '/api/proxy/{{this.name}}/:path*',
+        destination: 'http://localhost:{{this.port}}/:path*',
+      },
+      {{/each}}
+    ];
+  },
+};
+
+module.exports = nextConfig;

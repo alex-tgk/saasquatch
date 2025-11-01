@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { getServiceByName } from '@/lib/service-config'
+
+export async function GET(request: NextRequest) {
+  const serviceName = request.nextUrl.searchParams.get('service')
+
+  if (!serviceName) {
+    return NextResponse.json(
+      { error: 'Service name is required' },
+      { status: 400 }
+    )
+  }
+
+  const service = getServiceByName(serviceName)
+  if (!service) {
+    return NextResponse.json(
+      { error: 'Service not found' },
+      { status: 404 }
+    )
+  }
+
+  try {
+    // In production, fetch real metrics from service or monitoring system
+    // For now, return mock data
+    const metrics = {
+      cpu: {
+        usage: Math.random() * 4000000000,
+        percentage: Math.random() * 100,
+      },
+      memory: {
+        used: Math.random() * 2000000000,
+        total: 4000000000,
+        percentage: Math.random() * 100,
+      },
+      requests: {
+        total: Math.floor(Math.random() * 100000),
+        success: Math.floor(Math.random() * 95000),
+        error: Math.floor(Math.random() * 5000),
+        rps: Math.floor(Math.random() * 1000),
+      },
+      latency: {
+        p50: Math.random() * 50,
+        p95: Math.random() * 150,
+        p99: Math.random() * 300,
+      },
+      timestamp: new Date().toISOString(),
+    }
+
+    return NextResponse.json(metrics)
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}

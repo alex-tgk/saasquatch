@@ -1,0 +1,180 @@
+import { getServiceByName } from './service-config'
+
+export interface ApiError {
+  message: string
+  statusCode: number
+  details?: any
+}
+
+export class ApiClient {
+  private baseUrl: string
+
+  constructor(baseUrl?: string) {
+    this.baseUrl = baseUrl || ''
+  }
+
+  private async request<T>(
+    endpoint: string,
+    options?: RequestInit
+  ): Promise<T> {
+    const url = this.baseUrl + endpoint
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          ...options?.headers,
+        },
+      })
+
+      if (!response.ok) {
+        const error: ApiError = {
+          message: `HTTP ${response.status}: ${response.statusText}`,
+          statusCode: response.status,
+        }
+
+        try {
+          const errorData = await response.json()
+          error.details = errorData
+        } catch {
+          // Ignore JSON parse errors
+        }
+
+        throw error
+      }
+
+      // Handle no-content responses
+      if (response.status === 204) {
+        return {} as T
+      }
+
+      return await response.json()
+    } catch (error) {
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        throw {
+          message: 'Network error: Unable to connect to service',
+          statusCode: 0,
+          details: error,
+        } as ApiError
+      }
+      throw error
+    }
+  }
+
+  async get<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'GET' })
+  }
+
+  async post<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'POST',
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
+  async put<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PUT',
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+
+  async delete<T>(endpoint: string): Promise<T> {
+    return this.request<T>(endpoint, { method: 'DELETE' })
+  }
+
+  async patch<T>(endpoint: string, data?: any): Promise<T> {
+    return this.request<T>(endpoint, {
+      method: 'PATCH',
+      body: data ? JSON.stringify(data) : undefined,
+    })
+  }
+}
+
+// Service-specific clients
+export function createServiceClient(serviceName: string): ApiClient {
+  const service = getServiceByName(serviceName)
+  if (!service) {
+    throw new Error(`Unknown service: ${serviceName}`)
+  }
+  return new ApiClient(service.url)
+}
+
+// Dashboard API client (for dashboard's own API routes)
+export const dashboardApi = new ApiClient('/api')
+
+// Health check helper
+export async function checkServiceHealth(serviceName: string) {
+  const client = createServiceClient(serviceName)
+  try {
+    return await client.get<{
+      status: string
+      uptime: number
+      timestamp: string
+    }>('/health')
+  } catch (error) {
+    return {
+      status: 'offline',
+      uptime: 0,
+      timestamp: new Date().toISOString(),
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+// Ready check helper
+export async function checkServiceReadiness(serviceName: string) {
+  const client = createServiceClient(serviceName)
+  try {
+    return await client.get<{
+      status: string
+      checks: Record<string, { status: string; message?: string }>
+    }>('/ready')
+  } catch (error) {
+    return {
+      status: 'not_ready',
+      checks: {},
+      error: error instanceof Error ? error.message : 'Unknown error',
+    }
+  }
+}
+
+// Helper for streaming responses (Server-Sent Events)
+export async function* streamLogs(serviceName: string) {
+  const service = getServiceByName(serviceName)
+  if (!service) {
+    throw new Error(`Unknown service: ${serviceName}`)
+  }
+
+  const response = await fetch(`/api/logs?service=${serviceName}`)
+  if (!response.ok || !response.body) {
+    throw new Error(`Failed to stream logs from ${serviceName}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+
+      const chunk = decoder.decode(value)
+      const lines = chunk.split('\n')
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6)
+          try {
+            yield JSON.parse(data)
+          } catch {
+            // Skip invalid JSON
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock()
+  }
+}

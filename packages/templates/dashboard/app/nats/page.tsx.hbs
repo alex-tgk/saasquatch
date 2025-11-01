@@ -1,0 +1,70 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { NATSInspector } from '@/components/NATSInspector'
+import type { NATSStream, NATSMessage } from '@/lib/types'
+
+export default function NATSPage() {
+  const [streams, setStreams] = useState<NATSStream[]>([])
+  const [messages, setMessages] = useState<NATSMessage[]>([])
+
+  useEffect(() => {
+    // Mock data for demonstration
+    // In production, fetch real data from NATS API
+    const mockStreams: NATSStream[] = [
+      {
+        name: 'user-events',
+        subjects: ['user.created', 'user.updated', 'user.deleted'],
+        messages: 1543,
+        bytes: 524288,
+        consumers: 3,
+        created: new Date(Date.now() - 86400000 * 7).toISOString(),
+      },
+      {
+        name: 'auth-events',
+        subjects: ['auth.login', 'auth.logout', 'auth.register'],
+        messages: 892,
+        bytes: 294912,
+        consumers: 2,
+        created: new Date(Date.now() - 86400000 * 5).toISOString(),
+      },
+    ]
+
+    const mockMessages: NATSMessage[] = [
+      {
+        subject: 'user.created',
+        data: { userId: '123', email: 'user@example.com', tenantId: 'tenant-1' },
+        sequence: 1543,
+        timestamp: new Date().toISOString(),
+      },
+      {
+        subject: 'auth.login',
+        data: { userId: '123', ip: '192.168.1.1' },
+        sequence: 892,
+        timestamp: new Date().toISOString(),
+        redelivered: false,
+      },
+    ]
+
+    setStreams(mockStreams)
+    setMessages(mockMessages)
+  }, [])
+
+  const handleRefresh = () => {
+    // Refresh data
+    console.log('Refreshing NATS data...')
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">NATS Inspector</h1>
+        <p className="text-muted-foreground">
+          Monitor NATS message streams and event flow
+        </p>
+      </div>
+
+      <NATSInspector streams={streams} messages={messages} onRefresh={handleRefresh} />
+    </div>
+  )
+}

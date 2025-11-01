@@ -1,0 +1,103 @@
+export interface HealthCheck {
+  status: 'healthy' | 'degraded' | 'unhealthy' | 'offline'
+  uptime: number
+  timestamp: string
+  version?: string
+  error?: string
+}
+
+export interface ReadinessCheck {
+  status: 'ready' | 'not_ready'
+  checks: Record<string, {
+    status: 'connected' | 'disconnected' | 'error'
+    message?: string
+    latency?: number
+  }>
+}
+
+export interface ServiceMetrics {
+  cpu: {
+    usage: number
+    percentage: number
+  }
+  memory: {
+    used: number
+    total: number
+    percentage: number
+  }
+  requests: {
+    total: number
+    success: number
+    error: number
+    rps: number
+  }
+  latency: {
+    p50: number
+    p95: number
+    p99: number
+  }
+  timestamp: string
+}
+
+export interface LogEntry {
+  level: 'debug' | 'info' | 'warn' | 'error' | 'fatal'
+  message: string
+  timestamp: string
+  service: string
+  context?: Record<string, any>
+  error?: {
+    message: string
+    stack?: string
+  }
+}
+
+export interface NATSStream {
+  name: string
+  subjects: string[]
+  messages: number
+  bytes: number
+  consumers: number
+  created: string
+}
+
+export interface NATSMessage {
+  subject: string
+  data: any
+  sequence: number
+  timestamp: string
+  redelivered?: boolean
+}
+
+export interface RedisKey {
+  key: string
+  type: string
+  ttl: number
+  size: number
+}
+
+export interface RedisValue {
+  key: string
+  value: any
+  type: string
+  ttl: number
+}
+
+export interface ServiceStatus {
+  name: string
+  displayName: string
+  health: HealthCheck
+  readiness?: ReadinessCheck
+  metrics?: ServiceMetrics
+  lastChecked: string
+}
+
+export interface DashboardStats {
+  totalServices: number
+  healthyServices: number
+  degradedServices: number
+  unhealthyServices: number
+  totalRequests: number
+  errorRate: number
+  avgLatency: number
+  uptime: number
+}

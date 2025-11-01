@@ -1,0 +1,97 @@
+'use client'
+
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Activity, BarChart3, Database, Layers, MessageSquare, Terminal } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Badge } from '@/components/ui/badge'
+import { projectConfig } from '@/lib/service-config'
+
+interface NavItem {
+  href: string
+  label: string
+  icon: React.ReactNode
+}
+
+const navItems: NavItem[] = [
+  {
+    href: '/',
+    label: 'Overview',
+    icon: <Layers className="h-4 w-4" />,
+  },
+  {
+    href: '/services',
+    label: 'Services',
+    icon: <Activity className="h-4 w-4" />,
+  },
+  {
+    href: '/logs',
+    label: 'Logs',
+    icon: <Terminal className="h-4 w-4" />,
+  },
+  {
+    href: '/metrics',
+    label: 'Metrics',
+    icon: <BarChart3 className="h-4 w-4" />,
+  },
+  {
+    href: '/nats',
+    label: 'NATS',
+    icon: <MessageSquare className="h-4 w-4" />,
+  },
+  {
+    href: '/redis',
+    label: 'Redis',
+    icon: <Database className="h-4 w-4" />,
+  },
+]
+
+export function Navbar() {
+  const pathname = usePathname()
+
+  return (
+    <nav className="border-b bg-background">
+      <div className="container mx-auto px-4">
+        <div className="flex h-16 items-center justify-between">
+          {/* Logo/Title */}
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+              <Activity className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-lg font-bold">{{project.name}}</h1>
+              <p className="text-xs text-muted-foreground">Service Monitor</p>
+            </div>
+          </div>
+
+          {/* Navigation Links */}
+          <div className="flex items-center gap-1">
+            {navItems.map((item) => {
+              const isActive = pathname === item.href
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  {item.icon}
+                  {item.label}
+                </Link>
+              )
+            })}
+          </div>
+
+          {/* Version Badge */}
+          <Badge variant="outline" className="font-mono">
+            v{projectConfig.version || '0.1.0'}
+          </Badge>
+        </div>
+      </div>
+    </nav>
+  )
+}

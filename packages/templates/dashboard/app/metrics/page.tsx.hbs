@@ -1,0 +1,77 @@
+'use client'
+
+import { useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import { MetricsChart } from '@/components/MetricsChart'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { services } from '@/lib/service-config'
+
+export default function MetricsPage() {
+  const searchParams = useSearchParams()
+  const serviceName = searchParams.get('service') || services[0]?.name
+  const [metricsData, setMetricsData] = useState<any[]>([])
+
+  useEffect(() => {
+    // Mock data for demonstration
+    // In production, fetch real metrics from API
+    const mockData = Array.from({ length: 30 }, (_, i) => ({
+      timestamp: new Date(Date.now() - (29 - i) * 60000).toISOString(),
+      cpu: Math.random() * 100,
+      memory: Math.random() * 2000000000,
+      requests: Math.floor(Math.random() * 1000),
+      errors: Math.floor(Math.random() * 50),
+      latency: Math.random() * 200,
+    }))
+    setMetricsData(mockData)
+  }, [serviceName])
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">Metrics</h1>
+        <p className="text-muted-foreground">
+          Monitor service performance and resource utilization
+        </p>
+      </div>
+
+      <Tabs defaultValue={serviceName} className="space-y-4">
+        <TabsList>
+          {services.map((service) => (
+            <TabsTrigger key={service.name} value={service.name}>
+              {service.displayName}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {services.map((service) => (
+          <TabsContent key={service.name} value={service.name} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <MetricsChart
+                title="CPU & Memory Usage"
+                description="Resource utilization over time"
+                data={metricsData}
+                metrics={['cpu', 'memory']}
+                chartType="area"
+              />
+              <MetricsChart
+                title="Request Rate"
+                description="Requests and errors per minute"
+                data={metricsData}
+                metrics={['requests', 'errors']}
+                chartType="line"
+              />
+            </div>
+            <MetricsChart
+              title="Response Latency"
+              description="Average response time"
+              data={metricsData}
+              metrics={['latency']}
+              chartType="area"
+            />
+          </TabsContent>
+        ))}
+      </Tabs>
+    </div>
+  )
+}

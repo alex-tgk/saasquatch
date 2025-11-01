@@ -1,0 +1,55 @@
+import { NextRequest } from 'next/server'
+
+// Server-Sent Events for streaming logs
+export async function GET(request: NextRequest) {
+  const serviceName = request.nextUrl.searchParams.get('service')
+
+  const encoder = new TextEncoder()
+  const stream = new TransformStream()
+  const writer = stream.writable.getWriter()
+
+  // Simulate log streaming
+  // In production, connect to actual log stream (e.g., from file, Redis, or service endpoint)
+  const sendLog = async () => {
+    const logLevels = ['debug', 'info', 'warn', 'error']
+    const messages = [
+      'Request received',
+      'Processing authentication',
+      'Database query executed',
+      'Cache hit',
+      'Response sent',
+      'Error occurred',
+      'Warning: High memory usage',
+    ]
+
+    const log = {
+      level: logLevels[Math.floor(Math.random() * logLevels.length)],
+      message: messages[Math.floor(Math.random() * messages.length)],
+      timestamp: new Date().toISOString(),
+      service: serviceName || 'unknown',
+      context: {
+        requestId: Math.random().toString(36).substring(7),
+      },
+    }
+
+    const data = `data: ${JSON.stringify(log)}\n\n`
+    await writer.write(encoder.encode(data))
+  }
+
+  // Send logs every 2 seconds
+  const interval = setInterval(sendLog, 2000)
+
+  // Clean up on disconnect
+  request.signal.addEventListener('abort', () => {
+    clearInterval(interval)
+    writer.close()
+  })
+
+  return new Response(stream.readable, {
+    headers: {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+    },
+  })
+}

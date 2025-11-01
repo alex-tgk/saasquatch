@@ -1,0 +1,58 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { infrastructure } from '@/lib/service-config'
+
+export async function GET(request: NextRequest) {
+  const action = request.nextUrl.searchParams.get('action') || 'streams'
+
+  try {
+    // In production, connect to NATS monitoring API (usually on port 8222)
+    // For now, return mock data
+
+    if (action === 'streams') {
+      const streams = [
+        {
+          name: 'user-events',
+          subjects: ['user.created', 'user.updated', 'user.deleted'],
+          messages: Math.floor(Math.random() * 10000),
+          bytes: Math.floor(Math.random() * 1000000),
+          consumers: Math.floor(Math.random() * 5),
+          created: new Date(Date.now() - 86400000 * 7).toISOString(),
+        },
+        {
+          name: 'auth-events',
+          subjects: ['auth.login', 'auth.logout', 'auth.register'],
+          messages: Math.floor(Math.random() * 5000),
+          bytes: Math.floor(Math.random() * 500000),
+          consumers: Math.floor(Math.random() * 3),
+          created: new Date(Date.now() - 86400000 * 5).toISOString(),
+        },
+      ]
+
+      return NextResponse.json({ streams })
+    }
+
+    if (action === 'messages') {
+      const streamName = request.nextUrl.searchParams.get('stream')
+
+      const messages = [
+        {
+          subject: 'user.created',
+          data: { userId: '123', email: 'user@example.com' },
+          sequence: Math.floor(Math.random() * 10000),
+          timestamp: new Date().toISOString(),
+        },
+      ]
+
+      return NextResponse.json({ messages })
+    }
+
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 })
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+      },
+      { status: 500 }
+    )
+  }
+}
