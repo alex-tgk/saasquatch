@@ -328,6 +328,7 @@ MIT
       'src/services',
       'src/schemas',
       'src/utils',
+      'src/config',
       'test',
       'test/unit',
       'test/integration',
@@ -344,6 +345,13 @@ MIT
       infrastructure: this.config.infrastructure,
       observability: this.config.observability,
     };
+
+    // Generate swagger config
+    await this.renderer.renderToFile(
+      'base-service/src/config/swagger.config.ts.hbs',
+      path.join(serviceDir, 'src/config/swagger.config.ts'),
+      context
+    );
 
     // Generate package.json using template
     await this.renderer.renderToFile(
