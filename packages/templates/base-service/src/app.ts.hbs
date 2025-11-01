@@ -1,0 +1,61 @@
+import Fastify from 'fastify';
+import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+{{#if service.features.cors}}import cors from '@fastify/cors';
+{{/if}}{{#if service.features.rateLimit}}import rateLimit from '@fastify/rate-limit';
+{{/if}}{{#if service.features.compression}}import compress from '@fastify/compress';
+{{/if}}{{#if service.features.healthChecks}}import { healthRoutes } from './routes/health.js';
+{{/if}}{{#if service.features.database}}import { databasePlugin } from './plugins/database.js';
+{{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
+{{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
+{{/if}}{{#if (or service.features.authentication service.features.jwt)}}import { authPlugin } from './plugins/auth.js';
+{{/if}}
+
+export async function buildApp(opts = {}) {
+  const app = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL || 'info',
+      ...(process.env.NODE_ENV === 'development' && {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            translateTime: 'HH:MM:ss Z',
+            ignore: 'pid,hostname',
+          },
+        },
+      }),
+    },
+    ...opts,
+  }).withTypeProvider<TypeBoxTypeProvider>();
+
+  // Register plugins
+  {{#if service.features.cors}}await app.register(cors, {
+    origin: process.env.CORS_ORIGIN || true,
+    credentials: true,
+  });
+
+  {{/if}}{{#if service.features.rateLimit}}await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+  });
+
+  {{/if}}{{#if service.features.compression}}await app.register(compress);
+
+  {{/if}}{{#if service.features.database}}await app.register(databasePlugin);
+  {{/if}}{{#if service.features.cache}}await app.register(redisPlugin);
+  {{/if}}{{#if service.features.messageQueue}}await app.register(natsPlugin);
+  {{/if}}{{#if (or service.features.authentication service.features.jwt)}}await app.register(authPlugin);
+
+  {{/if}}// Register routes
+  {{#if service.features.healthChecks}}await app.register(healthRoutes);
+
+  {{/if}}// Default route
+  app.get('/', async (request, reply) => {
+    return {
+      service: '{{service.name}}',
+      version: '0.1.0',
+      status: 'running'
+    };
+  });
+
+  return app;
+}

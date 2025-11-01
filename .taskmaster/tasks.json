@@ -138,12 +138,12 @@
       "id": "TASK-007",
       "title": "Create base service Handlebars template",
       "description": "Build reusable base template for all Fastify services",
-      "status": "pending",
+      "status": "completed",
       "priority": "critical",
       "phase": 1,
       "complexity": "M",
       "estimatedHours": 4,
-      "actualHours": null,
+      "actualHours": 3.5,
       "tags": ["templates", "fastify", "week1"],
       "dependencies": ["TASK-006"],
       "acceptanceCriteria": [
@@ -153,8 +153,8 @@
         "Pino logging configured",
         "TypeScript setup"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-11-01T00:15:00.000Z",
+      "completedAt": "2025-11-01T01:00:00.000Z"
     },
     {
       "id": "TASK-008",
@@ -674,9 +674,9 @@
   ],
   "metadata": {
     "totalTasks": 30,
-    "completedTasks": 6,
+    "completedTasks": 7,
     "inProgressTasks": 0,
-    "pendingTasks": 24,
+    "pendingTasks": 23,
     "blockedTasks": 0,
     "byPhase": {
       "1": 8,
@@ -697,7 +697,7 @@
       "low": 0
     },
     "totalEstimatedHours": 128.5,
-    "totalActualHours": 16,
-    "completionPercentage": 20.00
+    "totalActualHours": 19.5,
+    "completionPercentage": 23.33
   }
 }

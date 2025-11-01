@@ -1,0 +1,39 @@
+import fp from 'fastify-plugin';
+import { connect, NatsConnection, StringCodec } from 'nats';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    nats: NatsConnection;
+    natsCodec: StringCodec;
+  }
+}
+
+async function natsPlugin(fastify: any) {
+  try {
+    const nc = await connect({
+      servers: process.env.NATS_URL || 'nats://localhost:4222',
+      name: '{{service.name}}',
+    });
+
+    const sc = StringCodec();
+
+    fastify.log.info('NATS connected successfully');
+
+    fastify.decorate('nats', nc);
+    fastify.decorate('natsCodec', sc);
+
+    fastify.addHook('onClose', async () => {
+      await nc.drain();
+      await nc.close();
+    });
+  } catch (error) {
+    fastify.log.error('NATS connection failed:', error);
+    throw error;
+  }
+}
+
+export default fp(natsPlugin, {
+  name: 'nats',
+});
+
+export { natsPlugin };
