@@ -403,7 +403,7 @@ MIT
         context
       );
     }
-    if (service.features.authentication || service.features.jwt) {
+    if (service.features.jwt) {
       await this.renderer.renderToFile(
         'base-service/src/plugins/auth.ts.hbs',
         path.join(serviceDir, 'src/plugins/auth.ts'),
