@@ -10,7 +10,7 @@ import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{/if}}{{#if service.features.database}}import { databasePlugin } from './plugins/database.js';
 {{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
 {{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
-{{/if}}{{#if (or service.features.authentication service.features.jwt)}}import { authPlugin } from './plugins/auth.js';
+{{/if}}{{#if service.features.jwt}}import { authPlugin } from './plugins/auth.js';
 {{/if}}
 
 export async function buildApp(opts = {}) {
@@ -50,7 +50,7 @@ export async function buildApp(opts = {}) {
   {{/if}}{{#if service.features.database}}await app.register(databasePlugin);
   {{/if}}{{#if service.features.cache}}await app.register(redisPlugin);
   {{/if}}{{#if service.features.messageQueue}}await app.register(natsPlugin);
-  {{/if}}{{#if (or service.features.authentication service.features.jwt)}}await app.register(authPlugin);
+  {{/if}}{{#if service.features.jwt}}await app.register(authPlugin);
 
   {{/if}}// Register routes
   {{#if service.features.healthChecks}}await app.register(healthRoutes);
