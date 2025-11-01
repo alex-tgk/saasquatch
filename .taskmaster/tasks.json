@@ -160,12 +160,12 @@
       "id": "TASK-008",
       "title": "Test end-to-end CLI generation",
       "description": "Run full saasquatch init command and verify generated project",
-      "status": "pending",
+      "status": "completed",
       "priority": "high",
       "phase": 1,
       "complexity": "S",
       "estimatedHours": 2,
-      "actualHours": null,
+      "actualHours": 2,
       "tags": ["testing", "integration", "week1"],
       "dependencies": ["TASK-007"],
       "acceptanceCriteria": [
@@ -175,8 +175,8 @@
         "All files are generated",
         "No errors during generation"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-11-01T01:30:00.000Z",
+      "completedAt": "2025-11-01T03:30:00.000Z"
     },
     {
       "id": "TASK-009",
@@ -702,9 +702,9 @@
   ],
   "metadata": {
     "totalTasks": 31,
-    "completedTasks": 7,
+    "completedTasks": 8,
     "inProgressTasks": 0,
-    "pendingTasks": 24,
+    "pendingTasks": 23,
     "blockedTasks": 0,
     "byPhase": {
       "1": 8,
@@ -725,7 +725,7 @@
       "low": 0
     },
     "totalEstimatedHours": 136.5,
-    "totalActualHours": 19.5,
-    "completionPercentage": 22.58
+    "totalActualHours": 21.5,
+    "completionPercentage": 25.81
   }
 }

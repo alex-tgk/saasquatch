@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import yaml from 'yaml';
 import type { Config, Service } from '../types/config.types.js';
+import { TemplateRenderer } from '../utils/template-renderer.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -15,11 +16,13 @@ const __dirname = dirname(__filename);
 export class ProjectGenerator {
   private config: Config;
   private templatesDir: string;
+  private renderer: TemplateRenderer;
 
   constructor(config: Config) {
     this.config = config;
     // Templates directory is at packages/templates
     this.templatesDir = path.resolve(__dirname, '../../../templates');
+    this.renderer = new TemplateRenderer();
   }
 
   async generate(projectDir: string): Promise<void> {
@@ -334,7 +337,105 @@ MIT
       await fs.ensureDir(path.join(serviceDir, dir));
     }
 
-    // Generate package.json for service
+    // Template context
+    const context = {
+      project: this.config.project,
+      service,
+      infrastructure: this.config.infrastructure,
+      observability: this.config.observability,
+    };
+
+    // Generate package.json using template
+    await this.renderer.renderToFile(
+      'base-service/package.json.hbs',
+      path.join(serviceDir, 'package.json'),
+      context
+    );
+
+    // Generate app.ts using template
+    await this.renderer.renderToFile(
+      'base-service/src/app.ts.hbs',
+      path.join(serviceDir, 'src/app.ts'),
+      context
+    );
+
+    // Generate index.ts using template
+    await this.renderer.renderToFile(
+      'base-service/src/index.ts.hbs',
+      path.join(serviceDir, 'src/index.ts'),
+      context
+    );
+
+    // Generate plugins
+    if (service.features.database) {
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/database.ts.hbs',
+        path.join(serviceDir, 'src/plugins/database.ts'),
+        context
+      );
+    }
+    if (service.features.cache) {
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/redis.ts.hbs',
+        path.join(serviceDir, 'src/plugins/redis.ts'),
+        context
+      );
+    }
+    if (service.features.messageQueue) {
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/nats.ts.hbs',
+        path.join(serviceDir, 'src/plugins/nats.ts'),
+        context
+      );
+    }
+    if (service.features.authentication || service.features.jwt) {
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/auth.ts.hbs',
+        path.join(serviceDir, 'src/plugins/auth.ts'),
+        context
+      );
+    }
+
+    // Generate health check routes
+    if (service.features.healthChecks) {
+      await this.renderer.renderToFile(
+        'base-service/src/routes/health.ts.hbs',
+        path.join(serviceDir, 'src/routes/health.ts'),
+        context
+      );
+    }
+
+    // Generate TypeScript config using template
+    await this.renderer.renderToFile(
+      'base-service/tsconfig.json.hbs',
+      path.join(serviceDir, 'tsconfig.json'),
+      context
+    );
+  }
+
+  // Legacy method - kept for backwards compatibility but now uses templates
+  private async generateServiceLegacy(projectDir: string, service: Service): Promise<void> {
+    const serviceDir = path.join(projectDir, 'services', service.name);
+    await fs.ensureDir(serviceDir);
+
+    // Create service directory structure
+    const serviceDirs = [
+      'src',
+      'src/plugins',
+      'src/routes',
+      'src/services',
+      'src/schemas',
+      'src/utils',
+      'test',
+      'test/unit',
+      'test/integration',
+    ];
+
+    for (const dir of serviceDirs) {
+      await fs.ensureDir(path.join(serviceDir, dir));
+    }
+
+    // Generate package.json for service (LEGACY - now using templates)
     const packageJson = {
       name: `@${this.config.project.name}/${service.name}`,
       version: '0.1.0',
