@@ -1,0 +1,12 @@
+{
+  "taskIdPrefix": "TASK",
+  "taskStatuses": ["pending", "in_progress", "review", "completed", "blocked"],
+  "defaultStatus": "pending",
+  "autoIncrement": true,
+  "tracking": {
+    "estimatedTime": true,
+    "actualTime": true,
+    "dependencies": true,
+    "tags": true
+  }
+}

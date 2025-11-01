@@ -1,0 +1,15 @@
+{
+  "project": {
+    "name": "saasquatch",
+    "description": "Production-ready CLI tool for generating Fastify microservices",
+    "version": "0.1.0",
+    "createdAt": "2025-10-31T23:45:00.000Z"
+  },
+  "tasks": [],
+  "metadata": {
+    "totalTasks": 0,
+    "completedTasks": 0,
+    "inProgressTasks": 0,
+    "pendingTasks": 0
+  }
+}
