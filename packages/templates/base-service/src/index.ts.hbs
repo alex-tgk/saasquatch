@@ -1,17 +1,27 @@
 import { buildApp } from './app.js';
+import { getAvailablePort } from './utils/port-manager.js';
 
 const start = async () => {
   try {
     const app = await buildApp();
 
-    const port = parseInt(process.env.PORT || '{{service.port}}', 10);
+    const preferredPort = parseInt(process.env.PORT || '{{service.port}}', 10);
     const host = process.env.HOST || '0.0.0.0';
+
+    // Get an available port (preferred or fallback)
+    const port = await getAvailablePort('{{service.name}}', preferredPort);
 
     await app.listen({ port, host });
 
-    console.log(`{{service.name}} running on http://${host}:${port}`);
+    if (port !== preferredPort) {
+      console.log(`\n🔄 Port ${preferredPort} was in use - auto-allocated to port ${port}\n`);
+    }
+
+    console.log(`✅ {{service.name}} running on http://${host}:${port}`);
+    console.log(`   Health: http://${host}:${port}/health`);
+    console.log(`   Docs:   http://${host}:${port}/docs\n`);
   } catch (err) {
-    console.error(err);
+    console.error('❌ Failed to start {{service.name}}:', err);
     process.exit(1);
   }
 };

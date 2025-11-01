@@ -1,0 +1,121 @@
+import getPort from 'get-port';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
+import { join } from 'path';
+
+/**
+ * Port Manager - Handles dynamic port allocation with fallback
+ * Provides self-healing port allocation when preferred ports are in use
+ */
+
+interface PortConfig {
+  serviceName: string;
+  preferredPort: number;
+  actualPort?: number;
+  timestamp?: string;
+}
+
+const PORT_CACHE_FILE = join(process.cwd(), '..', '..', '.port-cache.json');
+
+/**
+ * Get an available port, preferring the configured port but falling back to dynamic allocation
+ */
+export async function getAvailablePort(
+  serviceName: string,
+  preferredPort: number
+): Promise<number> {
+  try {
+    // Try the preferred port first
+    const availablePort = await getPort({ port: preferredPort });
+
+    // If we got the preferred port, use it
+    if (availablePort === preferredPort) {
+      updatePortCache(serviceName, preferredPort, preferredPort);
+      return preferredPort;
+    }
+
+    // Preferred port is taken, find an available port starting from preferred + 100
+    // This avoids conflicts with other services in typical port ranges
+    const fallbackPort = await getPort({
+      port: Array.from({ length: 101 }, (_, i) => preferredPort + 100 + i)
+    });
+
+    updatePortCache(serviceName, preferredPort, fallbackPort);
+
+    console.warn(
+      `⚠️  Port ${preferredPort} is in use. ${serviceName} is using port ${fallbackPort} instead.`
+    );
+    console.warn(
+      `   To use the preferred port, stop the process using port ${preferredPort} or update PORT in .env`
+    );
+
+    return fallbackPort;
+  } catch (error) {
+    console.error(`Failed to allocate port for ${serviceName}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Update the port cache file to track actual ports in use
+ * This helps with service discovery and debugging
+ */
+function updatePortCache(
+  serviceName: string,
+  preferredPort: number,
+  actualPort: number
+): void {
+  try {
+    let cache: Record<string, PortConfig> = {};
+
+    if (existsSync(PORT_CACHE_FILE)) {
+      const content = readFileSync(PORT_CACHE_FILE, 'utf-8');
+      cache = JSON.parse(content);
+    }
+
+    cache[serviceName] = {
+      serviceName,
+      preferredPort,
+      actualPort,
+      timestamp: new Date().toISOString()
+    };
+
+    writeFileSync(PORT_CACHE_FILE, JSON.stringify(cache, null, 2));
+  } catch (error) {
+    // Non-critical error - log but don't throw
+    console.warn('Failed to update port cache:', error);
+  }
+}
+
+/**
+ * Get the actual port being used by a service
+ */
+export function getServicePort(serviceName: string): number | null {
+  try {
+    if (!existsSync(PORT_CACHE_FILE)) {
+      return null;
+    }
+
+    const content = readFileSync(PORT_CACHE_FILE, 'utf-8');
+    const cache: Record<string, PortConfig> = JSON.parse(content);
+
+    return cache[serviceName]?.actualPort || null;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Get all active service ports
+ */
+export function getAllServicePorts(): Record<string, PortConfig> {
+  try {
+    if (!existsSync(PORT_CACHE_FILE)) {
+      return {};
+    }
+
+    const content = readFileSync(PORT_CACHE_FILE, 'utf-8');
+    return JSON.parse(content);
+  } catch (error) {
+    return {};
+  }
+}

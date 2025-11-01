@@ -166,6 +166,9 @@ build
 .env.local
 .env.*.local
 
+# Runtime
+.port-cache.json
+
 # Logs
 logs
 *.log
@@ -416,6 +419,13 @@ MIT
         context
       );
     }
+
+    // Generate port manager utility (for dynamic port allocation)
+    await this.renderer.renderToFile(
+      'base-service/src/utils/port-manager.ts.hbs',
+      path.join(serviceDir, 'src/utils/port-manager.ts'),
+      context
+    );
 
     // Generate TypeScript config using template
     await this.renderer.renderToFile(
