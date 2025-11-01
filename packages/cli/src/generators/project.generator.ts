@@ -353,6 +353,8 @@ MIT
       dependencies: {
         'fastify': '^4.24.0',
         'fastify-plugin': '^5.0.1',
+        '@fastify/type-provider-typebox': '^4.0.0',
+        '@sinclair/typebox': '^0.32.5',
         '@fastify/cors': '^8.5.0',
         '@fastify/helmet': '^11.1.1',
         '@fastify/rate-limit': '^9.1.0',

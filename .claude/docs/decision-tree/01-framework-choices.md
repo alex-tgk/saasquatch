@@ -1,4 +1,4 @@
-# Framework Decision Matrix
+sd# Framework Decision Matrix
 
 ## Executive Summary
 
@@ -13,7 +13,7 @@ Based on 2025 research, the microservices framework landscape offers several com
 **Rating**: ⭐⭐⭐⭐⭐ (Best for Large-Scale, Complex Projects)
 
 #### Strengths
-- **Architecture**: Opinionated, Angular-inspired structure with built-in DI
+- **cArchitecture**: Opinionated, Angular-inspired structure with built-in DI
 - **TypeScript-First**: Excellent type safety and developer experience
 - **Modularity**: Module-based architecture perfect for microservices
 - **Ecosystem**: Rich plugin ecosystem, built-in testing utilities
@@ -24,8 +24,7 @@ Based on 2025 research, the microservices framework landscape offers several com
 #### Weaknesses
 - **Learning Curve**: Steeper than minimal frameworks
 - **Overhead**: More boilerplate than lightweight alternatives
-- **Performance**: Slightly slower than Fastify (but negligible for most use cases)
-
+- **Performance**: Slightly slower than Fastify (but negligible for most use cases
 #### Best For
 - Large teams requiring architectural guardrails
 - Complex business logic with multiple domains
@@ -44,30 +43,11 @@ src/
 │   └── decorators/
 ├── config/
 │   └── database.config.ts
-└── modules/
+└── modules/)
+  cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     ├── users/
     │   ├── users.controller.ts
-    │   ├── users.service.ts
-    │   ├── users.module.ts
-    │   └── dto/
-    └── auth/
-```
-
----
-
-### ⚡ Fastify (Recommended for Performance)
-
-**Rating**: ⭐⭐⭐⭐⭐ (Best for High-Performance APIs)
-
-#### Strengths
-- **Speed**: One of the fastest Node.js frameworks (2-3x faster than Express)
-- **Low Overhead**: Minimal memory footprint
-- **Plugin System**: Highly extensible with encapsulation
-- **Schema Validation**: Built-in JSON Schema validation
-- **TypeScript Support**: Good TypeScript support
-- **Logging**: Built-in logging with Pino (fastest logger)
-
-#### Weaknesses
+    │   ├── users.service.tsggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg
 - **Less Opinionated**: Requires more architectural decisions
 - **Smaller Ecosystem**: Fewer plugins than Express
 - **Less Structure**: Not ideal for developers needing guardrails
