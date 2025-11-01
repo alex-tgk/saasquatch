@@ -41,6 +41,9 @@ export class ProjectGenerator {
     // Generate infrastructure files
     await this.generateInfrastructure(projectDir);
 
+    // Generate dashboard
+    await this.generateDashboard(projectDir);
+
     // Generate documentation
     await this.generateDocumentation(projectDir);
 
@@ -108,6 +111,7 @@ export class ProjectGenerator {
       const workspaceYaml = `packages:
   - 'services/*'
   - 'shared'
+  - 'dashboard'
 `;
       await fs.writeFile(
         path.join(projectDir, 'pnpm-workspace.yaml'),
@@ -1260,6 +1264,31 @@ echo "Run '${this.getDevCommand()}' to start all services"
     await fs.chmod(path.join(projectDir, 'infrastructure/setup.sh'), 0o755);
   }
 
+  private async generateDashboard(projectDir: string): Promise<void> {
+    const dashboardDir = path.join(projectDir, 'dashboard');
+    await fs.ensureDir(dashboardDir);
+
+    const context = {
+      project: this.config.project,
+      services: this.config.services,
+      infrastructure: this.config.infrastructure,
+      observability: this.config.observability,
+      dashboard: {
+        port: 3100
+      }
+    };
+
+    // Render all dashboard templates
+    await this.renderer.renderDirectory(
+      'dashboard',
+      dashboardDir,
+      context,
+      {
+        exclude: ['node_modules', 'dist', '.next']
+      }
+    );
+  }
+
   private async generateDocumentation(projectDir: string): Promise<void> {
     // Architecture documentation
     const architectureDoc = `# Architecture Overview
@@ -1797,14 +1826,15 @@ Redis persistence is configured via RDB snapshots and AOF logs.
   private getRootScripts(): Record<string, string> {
     const pm = this.config.project.packageManager;
     const runner = pm === 'npm' ? 'npm run' : pm;
-    
+
     return {
       'dev': 'concurrently "npm:dev:*"',
       'dev:services': `concurrently ${this.config.services.map(s => `"cd services/${s.name} && ${runner} dev"`).join(' ')}`,
+      'dev:dashboard': `cd dashboard && ${runner} dev`,
       'build': `${runner} ${pm === 'npm' ? '--' : '-r'} build`,
       'test': `${runner} ${pm === 'npm' ? '--' : '-r'} test`,
       'lint': `${runner} ${pm === 'npm' ? '--' : '-r'} lint`,
-      'clean': 'rimraf node_modules services/*/node_modules shared/node_modules',
+      'clean': 'rimraf node_modules services/*/node_modules shared/node_modules dashboard/node_modules',
       'docker:up': 'docker-compose up -d',
       'docker:down': 'docker-compose down',
       'docker:logs': 'docker-compose logs -f',

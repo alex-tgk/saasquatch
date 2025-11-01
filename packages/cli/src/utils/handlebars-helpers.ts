@@ -9,6 +9,16 @@ export function registerHelpers(): void {
     return str.replace(/-/g, '_');
   });
 
+  // Helper: Convert to UPPERCASE
+  Handlebars.registerHelper('uppercase', (str: string) => {
+    return str ? str.toUpperCase().replace(/-/g, '_') : '';
+  });
+
+  // Helper: Capitalize first letter
+  Handlebars.registerHelper('capitalize', (str: string) => {
+    return str ? str.charAt(0).toUpperCase() + str.slice(1) : '';
+  });
+
   // Helper: Equality check
   Handlebars.registerHelper('eq', (a: any, b: any) => {
     return a === b;
