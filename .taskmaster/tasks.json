@@ -4,7 +4,7 @@
     "description": "Production-ready CLI tool for generating Fastify microservices",
     "version": "0.1.0",
     "createdAt": "2025-10-31T23:45:00.000Z",
-    "updatedAt": "2025-11-01T03:27:35.897Z"
+    "updatedAt": "2025-11-01T18:00:00.000Z"
   },
   "tasks": [
     {
@@ -285,12 +285,12 @@
       "id": "TASK-011",
       "title": "Build auth routes with JSON Schema validation",
       "description": "Create POST /auth/register, /auth/login, /auth/logout, /auth/refresh, GET /auth/me",
-      "status": "pending",
+      "status": "completed",
       "priority": "critical",
       "phase": 2,
       "complexity": "L",
       "estimatedHours": 8,
-      "actualHours": null,
+      "actualHours": 8,
       "tags": [
         "auth",
         "routes",
@@ -308,19 +308,19 @@
         "Proper HTTP status codes",
         "Error responses standardized"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-11-01T10:00:00.000Z",
+      "completedAt": "2025-11-01T18:00:00.000Z"
     },
     {
       "id": "TASK-012",
       "title": "Implement password hashing with bcrypt",
       "description": "Add secure password hashing and verification",
-      "status": "pending",
+      "status": "completed",
       "priority": "critical",
       "phase": 2,
       "complexity": "S",
       "estimatedHours": 2,
-      "actualHours": null,
+      "actualHours": 1.5,
       "tags": [
         "auth",
         "security",
@@ -335,19 +335,19 @@
         "Never store plain text passwords",
         "Salt rounds configurable via env"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-11-01T10:00:00.000Z",
+      "completedAt": "2025-11-01T11:30:00.000Z"
     },
     {
       "id": "TASK-013",
       "title": "Add comprehensive auth service tests",
       "description": "Generate unit and integration tests for auth service",
-      "status": "pending",
+      "status": "completed",
       "priority": "high",
       "phase": 2,
       "complexity": "L",
       "estimatedHours": 8,
-      "actualHours": null,
+      "actualHours": 7,
       "tags": [
         "testing",
         "auth",
@@ -364,8 +364,8 @@
         "Test refresh flow",
         "80%+ coverage"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-11-01T11:00:00.000Z",
+      "completedAt": "2025-11-01T18:00:00.000Z"
     },
     {
       "id": "TASK-014",
@@ -512,12 +512,12 @@
       "id": "TASK-019",
       "title": "Test all services with infrastructure",
       "description": "Integration test with all services and infrastructure running",
-      "status": "pending",
+      "status": "completed",
       "priority": "high",
       "phase": 3,
       "complexity": "M",
       "estimatedHours": 4,
-      "actualHours": null,
+      "actualHours": 4,
       "tags": [
         "testing",
         "integration",
@@ -535,8 +535,8 @@
         "Multi-tenancy works end-to-end",
         "NATS events published"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-11-01T14:00:00.000Z",
+      "completedAt": "2025-11-01T18:00:00.000Z"
     },
     {
       "id": "TASK-020",
@@ -598,12 +598,12 @@
       "id": "TASK-022",
       "title": "Add health check endpoints",
       "description": "Implement GET /health and GET /ready on all services",
-      "status": "pending",
+      "status": "completed",
       "priority": "high",
       "phase": 4,
       "complexity": "S",
       "estimatedHours": 2,
-      "actualHours": null,
+      "actualHours": 2,
       "tags": [
         "health-checks",
         "observability",
@@ -619,8 +619,8 @@
         "Ready checks Redis connection",
         "Ready checks NATS connection"
       ],
-      "startedAt": null,
-      "completedAt": null
+      "startedAt": "2025-10-31T22:00:00.000Z",
+      "completedAt": "2025-11-01T00:00:00.000Z"
     },
     {
       "id": "TASK-023",
@@ -890,9 +890,9 @@
   ],
   "metadata": {
     "totalTasks": 31,
-    "completedTasks": 16,
+    "completedTasks": 21,
     "inProgressTasks": 0,
-    "pendingTasks": 15,
+    "pendingTasks": 10,
     "blockedTasks": 0,
     "byPhase": {
       "1": 8,
@@ -913,7 +913,7 @@
       "low": 0
     },
     "totalEstimatedHours": 136.5,
-    "totalActualHours": 69,
-    "completionPercentage": "51.61"
+    "totalActualHours": 91.5,
+    "completionPercentage": "67.74"
   }
 }

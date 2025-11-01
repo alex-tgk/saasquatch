@@ -22,8 +22,9 @@ describe('saasquatch init command', () => {
     // Run the CLI with non-interactive mode (when implemented)
     // For now, we'll test the project generator directly
     const { ProjectGenerator } = await import('../../src/generators/project.generator.js');
-    
+
     const config = {
+      version: '1.0.0',
       project: {
         name: projectName,
         description: 'Test project',
@@ -52,12 +53,13 @@ describe('saasquatch init command', () => {
         {
           name: 'auth-service',
           port: 3001,
-          type: 'service' as const,
+          type: 'standard' as const,
           features: {
             database: true,
             cache: true,
             messageQueue: true,
             authentication: true,
+            multiTenant: false,
             jwt: true,
             healthChecks: true,
             cors: true,
@@ -71,16 +73,16 @@ describe('saasquatch init command', () => {
           provider: 'pino' as const,
           level: 'info' as const,
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
+          provider: 'none' as const,
           enabled: false,
         },
       },
       deployment: {
         target: 'docker-compose' as const,
       },
+      useCases: [],
     };
 
     const generator = new ProjectGenerator(config);
@@ -96,8 +98,9 @@ describe('saasquatch init command', () => {
 
   it('should create service directories', async () => {
     const { ProjectGenerator } = await import('../../src/generators/project.generator.js');
-    
+
     const config = {
+      version: '1.0.0',
       project: {
         name: projectName,
         description: 'Test project',
@@ -126,12 +129,13 @@ describe('saasquatch init command', () => {
         {
           name: 'auth-service',
           port: 3001,
-          type: 'service' as const,
+          type: 'standard' as const,
           features: {
             database: true,
             cache: true,
             messageQueue: true,
             authentication: true,
+            multiTenant: false,
             jwt: true,
             healthChecks: true,
             cors: true,
@@ -145,16 +149,16 @@ describe('saasquatch init command', () => {
           provider: 'pino' as const,
           level: 'info' as const,
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
+          provider: 'none' as const,
           enabled: false,
         },
       },
       deployment: {
         target: 'docker-compose' as const,
       },
+      useCases: [],
     };
 
     const generator = new ProjectGenerator(config);
@@ -172,8 +176,9 @@ describe('saasquatch init command', () => {
 
   it('should generate valid package.json', async () => {
     const { ProjectGenerator } = await import('../../src/generators/project.generator.js');
-    
+
     const config = {
+      version: '1.0.0',
       project: {
         name: projectName,
         description: 'Test project',
@@ -202,12 +207,13 @@ describe('saasquatch init command', () => {
         {
           name: 'auth-service',
           port: 3001,
-          type: 'service' as const,
+          type: 'standard' as const,
           features: {
             database: true,
             cache: true,
             messageQueue: true,
             authentication: true,
+            multiTenant: false,
             jwt: true,
             healthChecks: true,
             cors: true,
@@ -221,16 +227,16 @@ describe('saasquatch init command', () => {
           provider: 'pino' as const,
           level: 'info' as const,
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
+          provider: 'none' as const,
           enabled: false,
         },
       },
       deployment: {
         target: 'docker-compose' as const,
       },
+      useCases: [],
     };
 
     const generator = new ProjectGenerator(config);
@@ -249,8 +255,9 @@ describe('saasquatch init command', () => {
 
   it('should generate infrastructure files', async () => {
     const { ProjectGenerator } = await import('../../src/generators/project.generator.js');
-    
+
     const config = {
+      version: '1.0.0',
       project: {
         name: projectName,
         description: 'Test project',
@@ -279,12 +286,13 @@ describe('saasquatch init command', () => {
         {
           name: 'auth-service',
           port: 3001,
-          type: 'service' as const,
+          type: 'standard' as const,
           features: {
             database: true,
             cache: true,
             messageQueue: true,
             authentication: true,
+            multiTenant: false,
             jwt: true,
             healthChecks: true,
             cors: true,
@@ -298,16 +306,16 @@ describe('saasquatch init command', () => {
           provider: 'pino' as const,
           level: 'info' as const,
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
+          provider: 'none' as const,
           enabled: false,
         },
       },
       deployment: {
         target: 'docker-compose' as const,
       },
+      useCases: [],
     };
 
     const generator = new ProjectGenerator(config);
@@ -321,8 +329,9 @@ describe('saasquatch init command', () => {
 
   it('should handle git initialization gracefully', async () => {
     const { ProjectGenerator } = await import('../../src/generators/project.generator.js');
-    
+
     const config = {
+      version: '1.0.0',
       project: {
         name: projectName,
         description: 'Test project',
@@ -351,12 +360,13 @@ describe('saasquatch init command', () => {
         {
           name: 'test-service',
           port: 3001,
-          type: 'service' as const,
+          type: 'standard' as const,
           features: {
             database: false,
             cache: false,
             messageQueue: false,
             authentication: false,
+            multiTenant: false,
             jwt: false,
             healthChecks: true,
             cors: true,
@@ -370,16 +380,16 @@ describe('saasquatch init command', () => {
           provider: 'pino' as const,
           level: 'info' as const,
         },
-        healthChecks: {
-          enabled: true,
-        },
+        healthChecks: true,
         tracing: {
+          provider: 'none' as const,
           enabled: false,
         },
       },
       deployment: {
         target: 'docker-compose' as const,
       },
+      useCases: [],
     };
 
     const generator = new ProjectGenerator(config);

@@ -1798,21 +1798,25 @@ Redis persistence is configured via RDB snapshots and AOF logs.
       spinner.text = 'Creating initial commit...';
       const commitStart = Date.now();
       try {
-        const commitResult = await execaCommand(
-          'git commit -m "Initial commit: Project scaffolded by SaaSquatch CLI" --no-verify --no-gpg-sign', 
-          { 
-            cwd: projectDir,
-            timeout: 15000,
-            env: {
-              ...process.env,
-              GIT_AUTHOR_NAME: 'SaaSquatch CLI',
-              GIT_AUTHOR_EMAIL: 'cli@saasquatch.dev',
-              GIT_COMMITTER_NAME: 'SaaSquatch CLI',
-              GIT_COMMITTER_EMAIL: 'cli@saasquatch.dev',
-              GIT_TERMINAL_PROMPT: '0', // Disable terminal prompts
-            }
+        const { execa } = await import('execa');
+        const commitResult = await execa('git', [
+          'commit',
+          '-m',
+          'Initial commit: Project scaffolded by SaaSquatch CLI',
+          '--no-verify',
+          '--no-gpg-sign'
+        ], {
+          cwd: projectDir,
+          timeout: 15000,
+          env: {
+            ...process.env,
+            GIT_AUTHOR_NAME: 'SaaSquatch CLI',
+            GIT_AUTHOR_EMAIL: 'cli@saasquatch.dev',
+            GIT_COMMITTER_NAME: 'SaaSquatch CLI',
+            GIT_COMMITTER_EMAIL: 'cli@saasquatch.dev',
+            GIT_TERMINAL_PROMPT: '0', // Disable terminal prompts
           }
-        );
+        });
         console.log(chalk.gray(`  Committed in ${Date.now() - commitStart}ms`));
         console.log(chalk.gray(`  ${commitResult.stdout}`));
         spinner.succeed('Git repository initialized');
