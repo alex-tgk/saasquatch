@@ -1,0 +1,194 @@
+import { FastifyInstance } from 'fastify';
+import { JetStreamClient, JetStreamManager } from 'nats';
+
+// Event schemas
+export interface UserCreatedEvent {
+  userId: string;
+  email: string;
+  tenantId: string;
+  timestamp: number;
+}
+
+export interface UserUpdatedEvent {
+  userId: string;
+  changes: Record<string, any>;
+  tenantId: string;
+  timestamp: number;
+}
+
+export interface UserDeletedEvent {
+  userId: string;
+  tenantId: string;
+  timestamp: number;
+}
+
+// Event types
+export enum UserEventType {
+  CREATED = 'user.created',
+  UPDATED = 'user.updated',
+  DELETED = 'user.deleted',
+}
+
+// Stream configuration
+const STREAM_NAME = 'USER_EVENTS';
+const SUBJECTS = ['user.*'];
+
+/**
+ * Initialize JetStream for user events
+ */
+export async function initializeUserEventsStream(fastify: FastifyInstance): Promise<void> {
+  try {
+    const jsm = await fastify.nats.jetstreamManager();
+
+    // Check if stream exists
+    try {
+      await jsm.streams.info(STREAM_NAME);
+      fastify.log.info(`JetStream stream '${STREAM_NAME}' already exists`);
+    } catch (error) {
+      // Stream doesn't exist, create it
+      await jsm.streams.add({
+        name: STREAM_NAME,
+        subjects: SUBJECTS,
+        retention: 'limits',
+        max_age: 7 * 24 * 60 * 60 * 1_000_000_000, // 7 days in nanoseconds
+        max_msgs: 1_000_000,
+        storage: 'file',
+        discard: 'old',
+      });
+      fastify.log.info(`JetStream stream '${STREAM_NAME}' created successfully`);
+    }
+  } catch (error) {
+    fastify.log.error('Failed to initialize JetStream stream:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get JetStream client
+ */
+async function getJetStreamClient(fastify: FastifyInstance): Promise<JetStreamClient> {
+  return fastify.nats.jetstream();
+}
+
+/**
+ * Publish user.created event
+ */
+export async function publishUserCreated(
+  fastify: FastifyInstance,
+  event: UserCreatedEvent
+): Promise<void> {
+  try {
+    const js = await getJetStreamClient(fastify);
+    const subject = UserEventType.CREATED;
+
+    const payload = JSON.stringify({
+      ...event,
+      timestamp: event.timestamp || Date.now(),
+    });
+
+    await js.publish(subject, fastify.natsCodec.encode(payload));
+
+    fastify.log.info({
+      event: UserEventType.CREATED,
+      userId: event.userId,
+      tenantId: event.tenantId,
+    }, 'Published user.created event');
+  } catch (error) {
+    fastify.log.error({
+      event: UserEventType.CREATED,
+      userId: event.userId,
+      error,
+    }, 'Failed to publish user.created event');
+    throw error;
+  }
+}
+
+/**
+ * Publish user.updated event
+ */
+export async function publishUserUpdated(
+  fastify: FastifyInstance,
+  event: UserUpdatedEvent
+): Promise<void> {
+  try {
+    const js = await getJetStreamClient(fastify);
+    const subject = UserEventType.UPDATED;
+
+    const payload = JSON.stringify({
+      ...event,
+      timestamp: event.timestamp || Date.now(),
+    });
+
+    await js.publish(subject, fastify.natsCodec.encode(payload));
+
+    fastify.log.info({
+      event: UserEventType.UPDATED,
+      userId: event.userId,
+      tenantId: event.tenantId,
+      changes: Object.keys(event.changes),
+    }, 'Published user.updated event');
+  } catch (error) {
+    fastify.log.error({
+      event: UserEventType.UPDATED,
+      userId: event.userId,
+      error,
+    }, 'Failed to publish user.updated event');
+    throw error;
+  }
+}
+
+/**
+ * Publish user.deleted event
+ */
+export async function publishUserDeleted(
+  fastify: FastifyInstance,
+  event: UserDeletedEvent
+): Promise<void> {
+  try {
+    const js = await getJetStreamClient(fastify);
+    const subject = UserEventType.DELETED;
+
+    const payload = JSON.stringify({
+      ...event,
+      timestamp: event.timestamp || Date.now(),
+    });
+
+    await js.publish(subject, fastify.natsCodec.encode(payload));
+
+    fastify.log.info({
+      event: UserEventType.DELETED,
+      userId: event.userId,
+      tenantId: event.tenantId,
+    }, 'Published user.deleted event');
+  } catch (error) {
+    fastify.log.error({
+      event: UserEventType.DELETED,
+      userId: event.userId,
+      error,
+    }, 'Failed to publish user.deleted event');
+    throw error;
+  }
+}
+
+/**
+ * Publish event with error handling (convenience wrapper)
+ */
+export async function publishUserEvent(
+  fastify: FastifyInstance,
+  eventType: UserEventType,
+  event: UserCreatedEvent | UserUpdatedEvent | UserDeletedEvent
+): Promise<void> {
+  switch (eventType) {
+    case UserEventType.CREATED:
+      await publishUserCreated(fastify, event as UserCreatedEvent);
+      break;
+    case UserEventType.UPDATED:
+      await publishUserUpdated(fastify, event as UserUpdatedEvent);
+      break;
+    case UserEventType.DELETED:
+      await publishUserDeleted(fastify, event as UserDeletedEvent);
+      break;
+    default:
+      throw new Error(`Unknown event type: ${eventType}`);
+  }
+}

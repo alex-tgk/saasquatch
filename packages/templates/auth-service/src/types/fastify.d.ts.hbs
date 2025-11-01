@@ -1,0 +1,32 @@
+import 'fastify';
+import { Knex } from 'knex';
+import { Redis } from 'ioredis';
+import { AuthService } from '../plugins/auth.plugin.js';
+import { DatabaseService } from '../plugins/database.plugin.js';
+import { RedisService } from '../plugins/redis.plugin.js';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    // Database
+    db: Knex;
+    databaseService: DatabaseService;
+
+    // Redis{{#if infrastructure.cache}}
+    redis: Redis;
+    redisService: RedisService;{{/if}}
+
+    // Auth
+    authService: AuthService;
+    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    verifyRefreshToken: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+  }
+
+  interface FastifyRequest {
+    user?: {
+      id: string;
+      email: string;
+      tenantId?: string;
+      type?: 'access' | 'refresh';
+    };
+  }
+}

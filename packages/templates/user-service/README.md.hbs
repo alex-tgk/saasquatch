@@ -1,0 +1,332 @@
+# {{service.name}}
+
+User management service with full CRUD operations.
+
+## Features
+
+- ✅ List users with pagination
+- ✅ Get single user by ID
+- ✅ Create new user
+- ✅ Update existing user
+- ✅ Soft delete user
+- ✅ JWT authentication required on all routes
+- ✅ JSON Schema validation using TypeBox
+{{#if infrastructure.database.multiTenancy}}- ✅ Multi-tenancy support (schema-per-tenant)
+{{/if}}{{#if service.features.swagger}}- ✅ OpenAPI/Swagger documentation at `/docs`
+{{/if}}
+
+## API Endpoints
+
+### Health Checks
+
+- `GET /health` - Basic health check
+- `GET /ready` - Readiness check with dependency status
+
+### User Management
+
+All user endpoints require JWT authentication via `Authorization: Bearer <token>` header.
+
+#### List Users
+```http
+GET /users?limit=10&offset=0
+```
+
+**Query Parameters:**
+- `limit` (optional): Number of results per page (1-100, default: 10)
+- `offset` (optional): Number of results to skip (default: 0)
+
+**Response (200):**
+```json
+{
+  "data": [
+    {
+      "id": "uuid",
+      "email": "user@example.com",
+      "name": "John Doe",
+      "created_at": "2024-01-01T00:00:00.000Z",
+      "updated_at": "2024-01-01T00:00:00.000Z",
+      "deleted_at": null
+    }
+  ],
+  "pagination": {
+    "limit": 10,
+    "offset": 0,
+    "total": 100
+  }
+}
+```
+
+#### Get User
+```http
+GET /users/:id
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "created_at": "2024-01-01T00:00:00.000Z",
+  "updated_at": "2024-01-01T00:00:00.000Z",
+  "deleted_at": null
+}
+```
+
+**Response (404):**
+```json
+{
+  "statusCode": 404,
+  "error": "Not Found",
+  "message": "User with ID {id} not found"
+}
+```
+
+#### Create User
+```http
+POST /users
+Content-Type: application/json
+
+{
+  "email": "user@example.com",
+  "name": "John Doe"
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "uuid",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "created_at": "2024-01-01T00:00:00.000Z",
+  "updated_at": "2024-01-01T00:00:00.000Z",
+  "deleted_at": null
+}
+```
+
+**Response (409):**
+```json
+{
+  "statusCode": 409,
+  "error": "Conflict",
+  "message": "User with this email already exists"
+}
+```
+
+#### Update User
+```http
+PUT /users/:id
+Content-Type: application/json
+
+{
+  "email": "newemail@example.com",
+  "name": "Jane Doe"
+}
+```
+
+Both fields are optional. Only provided fields will be updated.
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "email": "newemail@example.com",
+  "name": "Jane Doe",
+  "created_at": "2024-01-01T00:00:00.000Z",
+  "updated_at": "2024-01-01T12:00:00.000Z",
+  "deleted_at": null
+}
+```
+
+#### Delete User (Soft Delete)
+```http
+DELETE /users/:id
+```
+
+Sets the `deleted_at` timestamp instead of permanently deleting the record.
+
+**Response (204):** No content
+
+**Response (404):**
+```json
+{
+  "statusCode": 404,
+  "error": "Not Found",
+  "message": "User with ID {id} not found"
+}
+```
+
+## Configuration
+
+### Environment Variables
+
+```bash
+# Server
+PORT={{service.port}}
+HOST=0.0.0.0
+NODE_ENV=development
+LOG_LEVEL=info
+
+# JWT
+JWT_SECRET=your-super-secret-jwt-key
+JWT_EXPIRES_IN=7d
+
+{{#if service.features.database}}# Database{{#if (eq infrastructure.database.type "postgresql")}}
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/{{snakeCase service.name}}
+# OR
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME={{snakeCase service.name}}
+{{else}}
+DATABASE_URL=./data/{{service.name}}.db
+{{/if}}{{/if}}
+{{#if service.features.cache}}# Redis
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=
+{{/if}}
+{{#if service.features.messageQueue}}# NATS
+NATS_URL=nats://localhost:4222
+{{/if}}
+{{#if service.features.cors}}# CORS
+CORS_ORIGIN=http://localhost:3000
+{{/if}}
+```
+
+## Database Schema
+
+### Users Table
+
+| Column | Type | Nullable | Description |
+|--------|------|----------|-------------|
+| id | UUID | No | Primary key (auto-generated) |
+| email | VARCHAR(255) | No | User email (unique) |
+| name | VARCHAR(255) | No | User full name |
+| created_at | TIMESTAMP | No | Creation timestamp |
+| updated_at | TIMESTAMP | No | Last update timestamp |
+| deleted_at | TIMESTAMP | Yes | Soft delete timestamp |
+
+**Indexes:**
+- Primary key on `id`
+- Unique index on `email`
+- Index on `deleted_at`
+- Compound index on `(email, deleted_at)` for efficient unique checks
+
+## Running the Service
+
+### Development
+```bash
+pnpm dev
+```
+
+### Production
+```bash
+pnpm build
+pnpm start
+```
+
+### Running Migrations
+```bash
+pnpm knex migrate:latest
+```
+
+### Running Tests
+```bash
+pnpm test
+pnpm test:coverage
+```
+
+## Multi-Tenancy{{#if infrastructure.database.multiTenancy}}
+
+This service supports multi-tenancy using the schema-per-tenant pattern. The tenant ID is extracted from the JWT token (`request.user.tenantId`) and used to switch the PostgreSQL search path:
+
+```typescript
+await fastify.db.raw(`SET search_path TO tenant_${tenantId}`);
+```
+
+All subsequent database queries are automatically scoped to the tenant's schema.
+{{else}}
+
+Multi-tenancy is not enabled for this service.
+{{/if}}
+
+## Authentication
+
+All user management endpoints require a valid JWT token in the `Authorization` header:
+
+```http
+Authorization: Bearer <your-jwt-token>
+```
+
+The token must contain:
+- `id`: User ID
+- `email`: User email
+{{#if infrastructure.database.multiTenancy}}- `tenantId`: Tenant identifier (for multi-tenant deployments)
+{{/if}}
+
+## Error Responses
+
+All errors follow a consistent format:
+
+```json
+{
+  "statusCode": 400,
+  "error": "Bad Request",
+  "message": "Detailed error message"
+}
+```
+
+Common status codes:
+- `400` - Bad Request (validation errors)
+- `401` - Unauthorized (missing or invalid JWT)
+- `404` - Not Found (resource doesn't exist)
+- `409` - Conflict (duplicate email)
+- `500` - Internal Server Error
+
+## OpenAPI Documentation{{#if service.features.swagger}}
+
+Interactive API documentation is available at:
+```
+http://localhost:{{service.port}}/docs
+```
+
+The OpenAPI specification can be accessed at:
+```
+http://localhost:{{service.port}}/docs/json
+```
+{{else}}
+
+OpenAPI documentation is not enabled. To enable, add `swagger: true` to service features.
+{{/if}}
+
+## Logging
+
+All operations are logged using structured logging (Pino):
+
+```json
+{
+  "level": 30,
+  "time": 1704067200000,
+  "msg": "User created successfully",
+  "userId": "uuid"
+}
+```
+
+Key log events:
+- User creation
+- User updates
+- User deletions
+- Database errors
+- Authentication failures
+
+## Next Steps
+
+1. **Add validation**: Implement additional validation rules (e.g., password complexity)
+2. **Add search**: Implement user search by name or email
+3. **Add filtering**: Add filters for created_at, updated_at ranges
+4. **Add sorting**: Allow sorting by different fields
+5. **Add relationships**: Link users to other entities (roles, permissions, etc.)
+6. **Add tests**: Create comprehensive test suite (see `test/` directory)

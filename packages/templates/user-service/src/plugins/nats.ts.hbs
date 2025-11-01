@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import { connect, NatsConnection, StringCodec, JetStreamClient, JetStreamManager } from 'nats';
+import { connect, NatsConnection, StringCodec } from 'nats';
 
 declare module 'fastify' {
   interface FastifyInstance {

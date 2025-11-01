@@ -1,0 +1,613 @@
+import { test } from '@jest/globals';
+import { buildApp } from '../src/app.js';
+import { FastifyInstance } from 'fastify';
+
+describe('User Routes', () => {
+  let app: FastifyInstance;
+  let authToken: string;
+  let testUserId: string;
+
+  beforeAll(async () => {
+    // Build the app
+    app = await buildApp({ logger: false });
+
+    // Run migrations
+    await app.db.migrate.latest();
+
+    // Generate a test JWT token
+    authToken = app.jwt.sign({
+      id: 'test-admin-id',
+      email: 'admin@test.com',
+{{#if infrastructure.database.multiTenancy}}      tenantId: 'test-tenant',
+{{/if}}    });
+{{#if infrastructure.database.multiTenancy}}
+
+    // Create test tenant schema
+    await app.db.raw('CREATE SCHEMA IF NOT EXISTS tenant_test_tenant');
+    await app.db.raw('SET search_path TO tenant_test_tenant');
+    await app.db.migrate.latest();
+{{/if}}
+  });
+
+  afterAll(async () => {
+{{#if infrastructure.database.multiTenancy}}    // Clean up test tenant schema
+    await app.db.raw('DROP SCHEMA IF EXISTS tenant_test_tenant CASCADE');
+{{/if}}    // Clean up database
+    await app.db('users').del();
+    await app.close();
+  });
+
+  beforeEach(async () => {
+{{#if infrastructure.database.multiTenancy}}    // Set tenant context
+    await app.db.raw('SET search_path TO tenant_test_tenant');
+{{/if}}    // Clear users table before each test
+    await app.db('users').del();
+  });
+
+  describe('POST /users', () => {
+    test('should create a new user with valid data', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'newuser@test.com',
+          name: 'New User',
+        },
+      });
+
+      expect(response.statusCode).toBe(201);
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('id');
+      expect(body.email).toBe('newuser@test.com');
+      expect(body.name).toBe('New User');
+      expect(body.deleted_at).toBeNull();
+
+      // Save for other tests
+      testUserId = body.id;
+    });
+
+    test('should reject creation without authentication', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        payload: {
+          email: 'test@test.com',
+          name: 'Test User',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    test('should reject creation with invalid email', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'invalid-email',
+          name: 'Test User',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should reject creation with missing name', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'test@test.com',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should reject creation with empty name', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'test@test.com',
+          name: '',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should reject duplicate email', async () => {
+      // Create first user
+      await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'duplicate@test.com',
+          name: 'First User',
+        },
+      });
+
+      // Try to create second user with same email
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'duplicate@test.com',
+          name: 'Second User',
+        },
+      });
+
+      expect(response.statusCode).toBe(409);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Conflict');
+    });
+  });
+
+  describe('GET /users', () => {
+    beforeEach(async () => {
+      // Create test users
+      const users = [
+        { email: 'user1@test.com', name: 'User One' },
+        { email: 'user2@test.com', name: 'User Two' },
+        { email: 'user3@test.com', name: 'User Three' },
+      ];
+
+      for (const user of users) {
+        await app.inject({
+          method: 'POST',
+          url: '/users',
+          headers: {
+            authorization: `Bearer ${authToken}`,
+          },
+          payload: user,
+        });
+      }
+    });
+
+    test('should list users with default pagination', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('data');
+      expect(body).toHaveProperty('pagination');
+      expect(body.data).toHaveLength(3);
+      expect(body.pagination.limit).toBe(10);
+      expect(body.pagination.offset).toBe(0);
+      expect(body.pagination.total).toBe(3);
+    });
+
+    test('should list users with custom pagination', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users?limit=2&offset=1',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.data).toHaveLength(2);
+      expect(body.pagination.limit).toBe(2);
+      expect(body.pagination.offset).toBe(1);
+      expect(body.pagination.total).toBe(3);
+    });
+
+    test('should reject listing without authentication', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users',
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    test('should reject invalid limit (too high)', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users?limit=101',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should reject invalid limit (negative)', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users?limit=-1',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should not include soft-deleted users', async () => {
+      // Get first user
+      const listResponse = await app.inject({
+        method: 'GET',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+      const userId = JSON.parse(listResponse.body).data[0].id;
+
+      // Soft delete user
+      await app.inject({
+        method: 'DELETE',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      // List users again
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.pagination.total).toBe(2); // One less
+      expect(body.data.every((u: any) => u.id !== userId)).toBe(true);
+    });
+  });
+
+  describe('GET /users/:id', () => {
+    let userId: string;
+
+    beforeEach(async () => {
+      // Create a test user
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'getuser@test.com',
+          name: 'Get User',
+        },
+      });
+      userId = JSON.parse(response.body).id;
+    });
+
+    test('should get user by id', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.id).toBe(userId);
+      expect(body.email).toBe('getuser@test.com');
+      expect(body.name).toBe('Get User');
+    });
+
+    test('should return 404 for non-existent user', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/users/00000000-0000-0000-0000-000000000000',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Not Found');
+    });
+
+    test('should reject get without authentication', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: `/users/${userId}`,
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    test('should return 404 for soft-deleted user', async () => {
+      // Soft delete user
+      await app.inject({
+        method: 'DELETE',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      // Try to get user
+      const response = await app.inject({
+        method: 'GET',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+  });
+
+  describe('PUT /users/:id', () => {
+    let userId: string;
+
+    beforeEach(async () => {
+      // Create a test user
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'updateuser@test.com',
+          name: 'Update User',
+        },
+      });
+      userId = JSON.parse(response.body).id;
+    });
+
+    test('should update user name', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          name: 'Updated Name',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.name).toBe('Updated Name');
+      expect(body.email).toBe('updateuser@test.com'); // Email unchanged
+    });
+
+    test('should update user email', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'newemail@test.com',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.email).toBe('newemail@test.com');
+      expect(body.name).toBe('Update User'); // Name unchanged
+    });
+
+    test('should update both name and email', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'both@test.com',
+          name: 'Both Updated',
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      const body = JSON.parse(response.body);
+      expect(body.email).toBe('both@test.com');
+      expect(body.name).toBe('Both Updated');
+    });
+
+    test('should reject update with invalid email', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'invalid-email',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should reject update with empty name', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          name: '',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    test('should reject update to duplicate email', async () => {
+      // Create another user
+      await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'other@test.com',
+          name: 'Other User',
+        },
+      });
+
+      // Try to update to duplicate email
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'other@test.com',
+        },
+      });
+
+      expect(response.statusCode).toBe(409);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Conflict');
+    });
+
+    test('should return 404 for non-existent user', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: '/users/00000000-0000-0000-0000-000000000000',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          name: 'Updated Name',
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    test('should reject update without authentication', async () => {
+      const response = await app.inject({
+        method: 'PUT',
+        url: `/users/${userId}`,
+        payload: {
+          name: 'Updated Name',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+  });
+
+  describe('DELETE /users/:id', () => {
+    let userId: string;
+
+    beforeEach(async () => {
+      // Create a test user
+      const response = await app.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+        payload: {
+          email: 'deleteuser@test.com',
+          name: 'Delete User',
+        },
+      });
+      userId = JSON.parse(response.body).id;
+    });
+
+    test('should soft delete user', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(204);
+
+      // Verify user is soft deleted (deleted_at is set)
+      const user = await app.db('users').where({ id: userId }).first();
+      expect(user.deleted_at).not.toBeNull();
+    });
+
+    test('should return 404 for non-existent user', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: '/users/00000000-0000-0000-0000-000000000000',
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    test('should return 404 for already deleted user', async () => {
+      // Soft delete user
+      await app.inject({
+        method: 'DELETE',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      // Try to delete again
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/users/${userId}`,
+        headers: {
+          authorization: `Bearer ${authToken}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(404);
+    });
+
+    test('should reject delete without authentication', async () => {
+      const response = await app.inject({
+        method: 'DELETE',
+        url: `/users/${userId}`,
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+  });
+});

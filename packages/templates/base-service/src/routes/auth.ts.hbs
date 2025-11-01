@@ -1,0 +1,384 @@
+import { FastifyPluginAsync } from 'fastify';
+import { Type } from '@sinclair/typebox';
+
+// TypeBox schemas for type-safe validation
+const RegisterSchema = Type.Object({
+  email: Type.String({ format: 'email', description: 'User email address' }),
+  password: Type.String({ minLength: 8, description: 'User password (minimum 8 characters)' }),
+  name: Type.String({ minLength: 2, description: 'User full name' }),
+});
+
+const LoginSchema = Type.Object({
+  email: Type.String({ format: 'email', description: 'User email address' }),
+  password: Type.String({ description: 'User password' }),
+});
+
+const RefreshTokenSchema = Type.Object({
+  refreshToken: Type.String({ description: 'JWT refresh token' }),
+});
+
+const UserResponseSchema = Type.Object({
+  id: Type.String({ description: 'User ID' }),
+  email: Type.String({ format: 'email', description: 'User email' }),
+  name: Type.String({ description: 'User name' }),
+  createdAt: Type.String({ format: 'date-time', description: 'Account creation timestamp' }),
+  updatedAt: Type.String({ format: 'date-time', description: 'Last update timestamp' }),
+});
+
+const AuthResponseSchema = Type.Object({
+  accessToken: Type.String({ description: 'JWT access token (expires in 15 minutes)' }),
+  refreshToken: Type.String({ description: 'JWT refresh token (expires in 7 days)' }),
+  user: UserResponseSchema,
+});
+
+const ErrorResponseSchema = Type.Object({
+  statusCode: Type.Integer({ description: 'HTTP status code' }),
+  error: Type.String({ description: 'Error type' }),
+  message: Type.String({ description: 'Error message' }),
+});
+
+export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  // POST /auth/register - Register a new user
+  fastify.post('/auth/register', {
+    schema: {
+      description: 'Register a new user account',
+      tags: ['Authentication'],
+      summary: 'Register new user',
+      body: RegisterSchema,
+      response: {
+        201: {
+          description: 'User successfully registered',
+          content: {
+            'application/json': {
+              schema: AuthResponseSchema,
+              example: {
+                accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjNlNDU2Ny1lODliLTEyZDMtYTQ1Ni00MjY2MTQxNzQwMDAiLCJlbWFpbCI6InVzZXJAZXhhbXBsZS5jb20iLCJpYXQiOjE3MDQwNjcyMDAsImV4cCI6MTcwNDA2ODEwMH0.example',
+                refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiIxMjNlNDU2Ny1lODliLTEyZDMtYTQ1Ni00MjY2MTQxNzQwMDAiLCJ0eXBlIjoicmVmcmVzaCIsImlhdCI6MTcwNDA2NzIwMCwiZXhwIjoxNzA0NjcyMDAwfQ.example',
+                user: {
+                  id: '123e4567-e89b-12d3-a456-426614174000',
+                  email: 'user@example.com',
+                  name: 'John Doe',
+                  createdAt: '2024-01-01T00:00:00.000Z',
+                  updatedAt: '2024-01-01T00:00:00.000Z',
+                },
+              },
+            },
+          },
+        },
+        400: {
+          description: 'Validation error or email already exists',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 400,
+                error: 'Bad Request',
+                message: 'Email already registered',
+              },
+            },
+          },
+        },
+        500: {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // TODO: Implement registration logic in TASK-011
+    // This is a placeholder implementation
+    const { email, password, name } = request.body;
+
+    // Hash password with bcrypt (TASK-012)
+    // Check if email exists
+    // Create user in database
+    // Generate JWT tokens
+    // Return auth response
+
+    reply.code(201);
+    return {
+      accessToken: 'placeholder_access_token',
+      refreshToken: 'placeholder_refresh_token',
+      user: {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        email,
+        name,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  });
+
+  // POST /auth/login - Login user
+  fastify.post('/auth/login', {
+    schema: {
+      description: 'Authenticate user and receive JWT tokens',
+      tags: ['Authentication'],
+      summary: 'User login',
+      body: LoginSchema,
+      response: {
+        200: {
+          description: 'Login successful',
+          content: {
+            'application/json': {
+              schema: AuthResponseSchema,
+              example: {
+                accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                user: {
+                  id: '123e4567-e89b-12d3-a456-426614174000',
+                  email: 'user@example.com',
+                  name: 'John Doe',
+                  createdAt: '2024-01-01T00:00:00.000Z',
+                  updatedAt: '2024-01-01T00:00:00.000Z',
+                },
+              },
+            },
+          },
+        },
+        401: {
+          description: 'Invalid credentials',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Invalid email or password',
+              },
+            },
+          },
+        },
+        500: {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // TODO: Implement login logic in TASK-011
+    const { email, password } = request.body;
+
+    // Find user by email
+    // Verify password with bcrypt (TASK-012)
+    // Generate JWT tokens
+    // Return auth response
+
+    return {
+      accessToken: 'placeholder_access_token',
+      refreshToken: 'placeholder_refresh_token',
+      user: {
+        id: '123e4567-e89b-12d3-a456-426614174000',
+        email,
+        name: 'John Doe',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+    };
+  });
+
+  // POST /auth/refresh - Refresh access token
+  fastify.post('/auth/refresh', {
+    schema: {
+      description: 'Refresh access token using refresh token',
+      tags: ['Authentication'],
+      summary: 'Refresh access token',
+      body: RefreshTokenSchema,
+      response: {
+        200: {
+          description: 'Token refreshed successfully',
+          content: {
+            'application/json': {
+              schema: Type.Object({
+                accessToken: Type.String({ description: 'New JWT access token' }),
+                refreshToken: Type.String({ description: 'New JWT refresh token' }),
+              }),
+              example: {
+                accessToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+                refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+              },
+            },
+          },
+        },
+        401: {
+          description: 'Invalid or expired refresh token',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Invalid refresh token',
+              },
+            },
+          },
+        },
+        500: {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // TODO: Implement refresh logic in TASK-011
+    const { refreshToken } = request.body;
+
+    // Verify refresh token
+    // Generate new access token
+    // Optionally generate new refresh token (token rotation)
+    // Return new tokens
+
+    return {
+      accessToken: 'new_placeholder_access_token',
+      refreshToken: 'new_placeholder_refresh_token',
+    };
+  });
+
+  // POST /auth/logout - Logout user
+  fastify.post('/auth/logout', {
+    schema: {
+      description: 'Logout user and invalidate tokens',
+      tags: ['Authentication'],
+      summary: 'User logout',
+      security: [{ bearerAuth: [] }],
+      headers: Type.Object({
+        authorization: Type.String({ description: 'Bearer token', pattern: '^Bearer .+' }),
+      }),
+      response: {
+        200: {
+          description: 'Logout successful',
+          content: {
+            'application/json': {
+              schema: Type.Object({
+                message: Type.String({ description: 'Success message' }),
+              }),
+              example: {
+                message: 'Logout successful',
+              },
+            },
+          },
+        },
+        401: {
+          description: 'Unauthorized - Invalid or missing token',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Invalid or missing authorization token',
+              },
+            },
+          },
+        },
+        500: {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // TODO: Implement logout logic in TASK-011
+    // Extract token from Authorization header
+    // Add token to Redis blacklist
+    // Return success message
+
+    return {
+      message: 'Logout successful',
+    };
+  });
+
+  // GET /auth/me - Get current user profile
+  fastify.get('/auth/me', {
+    schema: {
+      description: 'Get authenticated user profile',
+      tags: ['Authentication'],
+      summary: 'Get current user',
+      security: [{ bearerAuth: [] }],
+      headers: Type.Object({
+        authorization: Type.String({ description: 'Bearer token', pattern: '^Bearer .+' }),
+      }),
+      response: {
+        200: {
+          description: 'User profile retrieved successfully',
+          content: {
+            'application/json': {
+              schema: UserResponseSchema,
+              example: {
+                id: '123e4567-e89b-12d3-a456-426614174000',
+                email: 'user@example.com',
+                name: 'John Doe',
+                createdAt: '2024-01-01T00:00:00.000Z',
+                updatedAt: '2024-01-01T00:00:00.000Z',
+              },
+            },
+          },
+        },
+        401: {
+          description: 'Unauthorized - Invalid or missing token',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 401,
+                error: 'Unauthorized',
+                message: 'Invalid or missing authorization token',
+              },
+            },
+          },
+        },
+        404: {
+          description: 'User not found',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 404,
+                error: 'Not Found',
+                message: 'User not found',
+              },
+            },
+          },
+        },
+        500: {
+          description: 'Internal server error',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    // TODO: Implement get current user logic in TASK-011
+    // Verify JWT token from Authorization header
+    // Extract user ID from token
+    // Fetch user from database
+    // Return user profile (without password)
+
+    return {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      email: 'user@example.com',
+      name: 'John Doe',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  });
+};

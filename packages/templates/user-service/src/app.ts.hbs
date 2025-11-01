@@ -1,0 +1,128 @@
+import Fastify from 'fastify';
+import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+{{#if service.features.cors}}import cors from '@fastify/cors';
+{{/if}}{{#if service.features.rateLimit}}import rateLimit from '@fastify/rate-limit';
+{{/if}}{{#if service.features.compression}}import compress from '@fastify/compress';
+{{/if}}{{#if service.features.swagger}}import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
+{{/if}}{{#if service.features.healthChecks}}import { healthRoutes } from './routes/health.js';
+{{/if}}{{#if service.features.database}}import { databasePlugin } from './plugins/database.js';
+{{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
+{{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
+import { initializeUserEventsStream } from './events/user.events.js';
+{{/if}}{{#if (or service.features.authentication service.features.jwt)}}import { authPlugin } from './plugins/auth.js';
+{{/if}}import { userRoutes } from './routes/user.routes.js';
+{{#if infrastructure.database.multiTenancy}}import { TenantService } from './services/tenant.service.js';
+import { createTenantMiddleware } from './middleware/tenant.middleware.js';
+{{/if}}
+
+export async function buildApp(opts = {}) {
+  const app = Fastify({
+    logger: {
+      level: process.env.LOG_LEVEL || 'info',
+      ...(process.env.NODE_ENV === 'development' && {
+        transport: {
+          target: 'pino-pretty',
+          options: {
+            translateTime: 'HH:MM:ss Z',
+            ignore: 'pid,hostname',
+          },
+        },
+      }),
+    },
+    ...opts,
+  }).withTypeProvider<TypeBoxTypeProvider>();
+
+  // Register plugins
+  {{#if service.features.cors}}await app.register(cors, {
+    origin: process.env.CORS_ORIGIN || true,
+    credentials: true,
+  });
+
+  {{/if}}{{#if service.features.rateLimit}}await app.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
+  });
+
+  {{/if}}{{#if service.features.compression}}await app.register(compress);
+
+  {{/if}}{{#if service.features.swagger}}// Swagger/OpenAPI documentation
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: '{{service.name}} API',
+        description: 'User management service with CRUD operations',
+        version: '0.1.0',
+      },
+      servers: [
+        {
+          url: 'http://localhost:{{service.port}}',
+          description: 'Development server',
+        },
+      ],
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
+        },
+      },
+    },
+  });
+
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: false,
+    },
+  });
+
+  {{/if}}{{#if service.features.database}}await app.register(databasePlugin);
+  {{/if}}{{#if service.features.cache}}await app.register(redisPlugin);
+  {{/if}}{{#if service.features.messageQueue}}await app.register(natsPlugin);
+
+  // Initialize JetStream for user events
+  await initializeUserEventsStream(app);
+  {{/if}}{{#if (or service.features.authentication service.features.jwt)}}await app.register(authPlugin);
+
+  {{/if}}{{#if infrastructure.database.multiTenancy}}// Initialize Tenant Service and Middleware
+  const tenantService = new TenantService(app.db);
+  const tenantMiddleware = createTenantMiddleware(tenantService);
+
+  // Apply tenant middleware globally to all authenticated routes
+  // Skip tenant context for public/health endpoints
+  app.addHook('preHandler', async (request, reply) => {
+    const publicPaths = ['/health', '/ready', '/docs', '/'];
+    const isPublicPath = publicPaths.some(path => request.url.startsWith(path));
+
+    // Skip tenant middleware for public endpoints
+    if (isPublicPath) {
+      return;
+    }
+
+    // Apply tenant middleware for authenticated routes with tenantId
+    if (request.user?.tenantId) {
+      return tenantMiddleware(request, reply, () => {});
+    }
+  });
+
+  {{/if}}// Register routes
+  {{#if service.features.healthChecks}}await app.register(healthRoutes);
+
+  {{/if}}await app.register(userRoutes);
+
+  // Root route
+  app.get('/', async (request, reply) => {
+    return {
+      service: '{{service.name}}',
+      version: '0.1.0',
+      status: 'running',
+      description: 'User management service with CRUD operations',
+    };
+  });
+
+  return app;
+}

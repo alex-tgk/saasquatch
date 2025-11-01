@@ -1,5 +1,8 @@
 import Fastify from 'fastify';
 import { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import swagger from '@fastify/swagger';
+import swaggerUi from '@fastify/swagger-ui';
+import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{#if service.features.cors}}import cors from '@fastify/cors';
 {{/if}}{{#if service.features.rateLimit}}import rateLimit from '@fastify/rate-limit';
 {{/if}}{{#if service.features.compression}}import compress from '@fastify/compress';
@@ -27,6 +30,10 @@ export async function buildApp(opts = {}) {
     ...opts,
   }).withTypeProvider<TypeBoxTypeProvider>();
 
+  // Register Swagger for API documentation
+  await app.register(swagger, swaggerOptions);
+  await app.register(swaggerUi, swaggerUiOptions);
+
   // Register plugins
   {{#if service.features.cors}}await app.register(cors, {
     origin: process.env.CORS_ORIGIN || true,
@@ -49,11 +56,28 @@ export async function buildApp(opts = {}) {
   {{#if service.features.healthChecks}}await app.register(healthRoutes);
 
   {{/if}}// Default route
-  app.get('/', async (request, reply) => {
+  app.get('/', {
+    schema: {
+      description: 'Service information endpoint',
+      tags: ['General'],
+      response: {
+        200: {
+          type: 'object',
+          properties: {
+            service: { type: 'string', example: '{{service.name}}' },
+            version: { type: 'string', example: '0.1.0' },
+            status: { type: 'string', example: 'running' },
+            documentation: { type: 'string', example: 'http://localhost:{{service.port}}/docs' },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     return {
       service: '{{service.name}}',
       version: '0.1.0',
-      status: 'running'
+      status: 'running',
+      documentation: `http://localhost:{{service.port}}/docs`,
     };
   });
 

@@ -1,0 +1,140 @@
+import { FastifyRequest, FastifyReply, HookHandlerDoneFunction } from 'fastify';
+import { TenantService } from '../services/tenant.service{{#unless (eq infrastructure.database.type "postgresql")}}.js{{/unless}}';
+
+/**
+ * Tenant Context Middleware
+ *
+ * This preHandler hook extracts the tenantId from the JWT token
+ * and sets the PostgreSQL search_path to scope all database queries
+ * to the tenant's schema.
+ *
+ * This ensures complete tenant isolation at the database level.
+ *
+ * Usage:
+ *   fastify.addHook('preHandler', tenantMiddleware);
+ *   // or on specific routes:
+ *   fastify.get('/users', { preHandler: [fastify.authenticate, tenantMiddleware] }, handler);
+ */
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    tenantContext?: {
+      tenantId: string;
+      schemaName: string;
+    };
+  }
+}
+
+/**
+ * Create tenant middleware with access to Fastify instance
+ */
+export function createTenantMiddleware(tenantService: TenantService) {
+  return async function tenantMiddleware(
+    request: FastifyRequest,
+    reply: FastifyReply,
+    done: HookHandlerDoneFunction
+  ) {
+    try {
+      // Extract tenantId from JWT token (set by auth plugin)
+      const tenantId = request.user?.tenantId;
+
+      // If no tenantId in token, this might be a public route or error
+      if (!tenantId) {
+        // Skip tenant context for routes that don't require it
+        // (health checks, auth endpoints, etc.)
+        return done();
+      }
+
+      // Verify tenant schema exists
+      const schemaExists = await tenantService.schemaExists(tenantId);
+      if (!schemaExists) {
+        reply.code(403).send({
+          error: 'Forbidden',
+          message: `Tenant schema not found for tenant: ${tenantId}`,
+          statusCode: 403,
+        });
+        return;
+      }
+
+      // Set PostgreSQL search_path to tenant schema
+      // All subsequent database queries in this request will be scoped to this tenant
+      await tenantService.setTenantContext(tenantId);
+
+      // Store tenant context for easy access in route handlers
+      request.tenantContext = {
+        tenantId,
+        schemaName: tenantService.getSchemaName(tenantId),
+      };
+
+      // Log tenant context (useful for debugging and auditing)
+      request.log.debug({
+        tenantId,
+        schemaName: request.tenantContext.schemaName,
+        userId: request.user?.id,
+      }, 'Tenant context set');
+
+      done();
+    } catch (error) {
+      request.log.error({ error }, 'Failed to set tenant context');
+      reply.code(500).send({
+        error: 'Internal Server Error',
+        message: 'Failed to set tenant context',
+        statusCode: 500,
+      });
+    }
+  };
+}
+
+/**
+ * Middleware to require tenant context
+ * Use this on routes that absolutely require a tenant
+ */
+export function requireTenantContext(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  done: HookHandlerDoneFunction
+) {
+  if (!request.tenantContext) {
+    reply.code(403).send({
+      error: 'Forbidden',
+      message: 'Tenant context required',
+      statusCode: 403,
+    });
+    return;
+  }
+  done();
+}
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+/**
+ * Helper to verify tenant isolation in tests
+ * This can be used in integration tests to ensure queries are scoped
+ */
+export async function getCurrentSchema(db: any): Promise<string> {
+  const result = await db.raw('SHOW search_path');
+  return result.rows[0].search_path;
+}
+{{/if}}
+
+/**
+ * Example route using tenant middleware:
+ *
+ * ```typescript
+ * import { createTenantMiddleware } from './middleware/tenant.middleware';
+ *
+ * const tenantService = new TenantService(fastify.db);
+ * const tenantMiddleware = createTenantMiddleware(tenantService);
+ *
+ * // Apply globally to all routes
+ * fastify.addHook('preHandler', tenantMiddleware);
+ *
+ * // Or apply to specific routes
+ * fastify.get('/users', {
+ *   preHandler: [fastify.authenticate, tenantMiddleware]
+ * }, async (request, reply) => {
+ *   // All queries are automatically scoped to tenant
+ *   const users = await fastify.db('users').select('*');
+ *   return { users, tenant: request.tenantContext };
+ * });
+ * ```
+ */

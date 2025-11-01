@@ -1,0 +1,52 @@
+import fp from 'fastify-plugin';
+import knex, { Knex } from 'knex';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    db: Knex;
+  }
+}
+
+async function databasePlugin(fastify: any) {
+  const config: Knex.Config = {
+    client: '{{infrastructure.database.type}}',
+    connection: {{#if (eq infrastructure.database.type "postgresql")}}process.env.DATABASE_URL || {
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432', 10),
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
+      database: process.env.DB_NAME || '{{snakeCase service.name}}',
+    }{{else}}process.env.DATABASE_URL || './data/{{service.name}}.db'{{/if}},{{#if (eq infrastructure.database.type "sqlite")}}
+    useNullAsDefault: true,{{/if}}
+    pool: {
+      min: 2,
+      max: 10,
+    },
+    migrations: {
+      directory: './migrations',
+    },
+  };
+
+  const db = knex(config);
+
+  // Test connection
+  try {
+    await db.raw('SELECT 1');
+    fastify.log.info('Database connected successfully');
+  } catch (error) {
+    fastify.log.error('Database connection failed:', error);
+    throw error;
+  }
+
+  fastify.decorate('db', db);
+
+  fastify.addHook('onClose', async () => {
+    await db.destroy();
+  });
+}
+
+export default fp(databasePlugin, {
+  name: 'database',
+});
+
+export { databasePlugin };

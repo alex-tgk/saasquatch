@@ -1,0 +1,303 @@
+import { FastifySwaggerOptions } from '@fastify/swagger';
+import { FastifySwaggerUiOptions } from '@fastify/swagger-ui';
+
+export const swaggerOptions: FastifySwaggerOptions = {
+  openapi: {
+    info: {
+      title: '{{service.name}} API',
+      description: '{{service.description}}',
+      version: '1.0.0',
+      contact: {
+        name: 'API Support',
+        email: 'support@{{project.name}}.com',
+      },
+      license: {
+        name: 'MIT',
+        url: 'https://opensource.org/licenses/MIT',
+      },
+    },
+    servers: [
+      {
+        url: 'http://localhost:{{service.port}}',
+        description: 'Development server',
+      },
+      {
+        url: 'https://api.{{project.name}}.com',
+        description: 'Production server',
+      },
+    ],
+    tags: [
+      {{#if service.features.healthChecks}}{
+        name: 'Health',
+        description: 'Health check and readiness endpoints',
+      },
+      {{/if}}{{#if (or service.features.authentication service.features.jwt)}}{
+        name: 'Authentication',
+        description: 'User authentication and authorization operations',
+      },
+      {{/if}}{{#if (eq service.name 'user-service')}}{
+        name: 'Users',
+        description: 'User management operations',
+      },
+      {{/if}}{
+        name: 'General',
+        description: 'General service information',
+      },
+    ],
+    components: {
+      securitySchemes: {
+        {{#if (or service.features.authentication service.features.jwt)}}bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT',
+          description: 'JWT Authorization header using the Bearer scheme',
+        },
+        {{/if}}apiKey: {
+          type: 'apiKey',
+          name: 'X-API-Key',
+          in: 'header',
+          description: 'API key for service-to-service authentication',
+        },
+      },
+      schemas: {
+        Error: {
+          type: 'object',
+          required: ['statusCode', 'error', 'message'],
+          properties: {
+            statusCode: {
+              type: 'integer',
+              description: 'HTTP status code',
+              example: 400,
+            },
+            error: {
+              type: 'string',
+              description: 'Error type',
+              example: 'Bad Request',
+            },
+            message: {
+              type: 'string',
+              description: 'Error message',
+              example: 'Validation failed',
+            },
+            validation: {
+              type: 'array',
+              description: 'Validation errors (if applicable)',
+              items: {
+                type: 'object',
+                properties: {
+                  field: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        HealthCheck: {
+          type: 'object',
+          required: ['status'],
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['healthy', 'unhealthy'],
+              description: 'Service health status',
+              example: 'healthy',
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Health check timestamp',
+              example: '2024-01-01T00:00:00.000Z',
+            },
+          },
+        },
+        ReadinessCheck: {
+          type: 'object',
+          required: ['status', 'checks'],
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['ready', 'not_ready'],
+              description: 'Service readiness status',
+              example: 'ready',
+            },
+            checks: {
+              type: 'object',
+              description: 'Individual dependency checks',
+              properties: {
+                {{#if service.features.database}}database: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number', description: 'Response time in ms' },
+                  },
+                },
+                {{/if}}{{#if service.features.cache}}redis: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number', description: 'Response time in ms' },
+                  },
+                },
+                {{/if}}{{#if service.features.messageQueue}}nats: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number', description: 'Response time in ms' },
+                  },
+                },
+                {{/if}}
+              },
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Readiness check timestamp',
+              example: '2024-01-01T00:00:00.000Z',
+            },
+          },
+        },
+        {{#if (or service.features.authentication service.features.jwt)}}AuthRegisterRequest: {
+          type: 'object',
+          required: ['email', 'password', 'name'],
+          properties: {
+            email: {
+              type: 'string',
+              format: 'email',
+              description: 'User email address',
+              example: 'user@example.com',
+            },
+            password: {
+              type: 'string',
+              minLength: 8,
+              description: 'User password (minimum 8 characters)',
+              example: 'SecureP@ssw0rd',
+            },
+            name: {
+              type: 'string',
+              minLength: 2,
+              description: 'User full name',
+              example: 'John Doe',
+            },
+          },
+        },
+        AuthLoginRequest: {
+          type: 'object',
+          required: ['email', 'password'],
+          properties: {
+            email: {
+              type: 'string',
+              format: 'email',
+              description: 'User email address',
+              example: 'user@example.com',
+            },
+            password: {
+              type: 'string',
+              description: 'User password',
+              example: 'SecureP@ssw0rd',
+            },
+          },
+        },
+        AuthResponse: {
+          type: 'object',
+          required: ['accessToken', 'refreshToken', 'user'],
+          properties: {
+            accessToken: {
+              type: 'string',
+              description: 'JWT access token (expires in 15 minutes)',
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            },
+            refreshToken: {
+              type: 'string',
+              description: 'JWT refresh token (expires in 7 days)',
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            },
+            user: {
+              type: 'object',
+              properties: {
+                id: { type: 'string', example: '123e4567-e89b-12d3-a456-426614174000' },
+                email: { type: 'string', example: 'user@example.com' },
+                name: { type: 'string', example: 'John Doe' },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
+        },
+        AuthRefreshRequest: {
+          type: 'object',
+          required: ['refreshToken'],
+          properties: {
+            refreshToken: {
+              type: 'string',
+              description: 'JWT refresh token',
+              example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
+            },
+          },
+        },
+        UserProfile: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'string',
+              description: 'User ID',
+              example: '123e4567-e89b-12d3-a456-426614174000',
+            },
+            email: {
+              type: 'string',
+              format: 'email',
+              description: 'User email',
+              example: 'user@example.com',
+            },
+            name: {
+              type: 'string',
+              description: 'User name',
+              example: 'John Doe',
+            },
+            createdAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Account creation timestamp',
+              example: '2024-01-01T00:00:00.000Z',
+            },
+            updatedAt: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Last update timestamp',
+              example: '2024-01-01T00:00:00.000Z',
+            },
+          },
+        },
+        {{/if}}
+      },
+    },
+  },
+};
+
+export const swaggerUiOptions: FastifySwaggerUiOptions = {
+  routePrefix: '/docs',
+  uiConfig: {
+    docExpansion: 'list',
+    deepLinking: true,
+    displayRequestDuration: true,
+    filter: true,
+    showExtensions: true,
+    showCommonExtensions: true,
+    syntaxHighlight: {
+      activate: true,
+      theme: 'monokai',
+    },
+  },
+  uiHooks: {
+    onRequest: function (request, reply, next) {
+      next();
+    },
+    preHandler: function (request, reply, next) {
+      next();
+    },
+  },
+  staticCSP: true,
+  transformStaticCSP: (header) => header,
+  transformSpecification: (swaggerObject, request, reply) => {
+    return swaggerObject;
+  },
+  transformSpecificationClone: true,
+};

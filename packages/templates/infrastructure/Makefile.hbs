@@ -1,0 +1,210 @@
+.PHONY: help up down restart logs ps clean backup restore health
+
+# Default target
+.DEFAULT_GOAL := help
+
+# Project name
+PROJECT_NAME={{project.name}}
+
+help: ## Show this help message
+	@echo "{{project.name}} Infrastructure Management"
+	@echo ""
+	@echo "Available commands:"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+
+up: ## Start all services
+	@echo "Starting all services..."
+	docker-compose up -d
+	@echo "Services started. Run 'make logs' to view logs or 'make ps' to check status."
+
+down: ## Stop all services
+	@echo "Stopping all services..."
+	docker-compose down
+	@echo "Services stopped."
+
+restart: ## Restart all services
+	@echo "Restarting all services..."
+	docker-compose restart
+	@echo "Services restarted."
+
+logs: ## View logs from all services
+	docker-compose logs -f
+
+ps: ## Show service status
+	docker-compose ps
+
+health: ## Check health of all services
+	@echo "Checking service health..."
+{{#each services}}
+	@echo "\n{{this.name}}:"
+	@curl -s http://localhost:{{this.port}}/health | jq . || echo "  Service not responding"
+{{/each}}
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+	@echo "\nPostgreSQL:"
+	@docker-compose exec -T postgres pg_isready -U postgres || echo "  PostgreSQL not ready"
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+	@echo "\nRedis:"
+	@docker-compose exec -T redis redis-cli ping || echo "  Redis not responding"
+{{/if}}
+{{#if infrastructure.messageQueue}}
+	@echo "\nNATS:"
+	@curl -s http://localhost:8222/healthz || echo "  NATS not responding"
+{{/if}}
+
+build: ## Rebuild all services
+	@echo "Rebuilding all services..."
+	docker-compose build --no-cache
+	@echo "Build complete."
+
+rebuild: down build up ## Stop, rebuild, and start all services
+
+clean: ## Remove all containers and volumes (WARNING: deletes data)
+	@echo "WARNING: This will delete all data. Press Ctrl+C to cancel."
+	@sleep 5
+	docker-compose down -v
+	@echo "All containers and volumes removed."
+
+clean-volumes: ## Remove all Docker volumes (WARNING: deletes data)
+	@echo "WARNING: This will delete all data. Press Ctrl+C to cancel."
+	@sleep 5
+	docker volume rm $(shell docker volume ls -q | grep $(PROJECT_NAME)) || true
+	@echo "All volumes removed."
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+db-shell: ## Open PostgreSQL shell
+	docker-compose exec postgres psql -U postgres -d $(PROJECT_NAME)
+
+db-backup: ## Create database backup
+	@mkdir -p backups
+	@echo "Creating database backup..."
+	docker-compose exec -T postgres pg_dump -U postgres $(PROJECT_NAME) > backups/$(PROJECT_NAME)-$(shell date +%Y%m%d-%H%M%S).sql
+	@echo "Backup created in backups/ directory"
+
+db-restore: ## Restore database from backup (specify file with FILE=path/to/backup.sql)
+	@if [ -z "$(FILE)" ]; then \
+		echo "Error: Please specify backup file with FILE=path/to/backup.sql"; \
+		exit 1; \
+	fi
+	@echo "Restoring database from $(FILE)..."
+	docker-compose exec -T postgres psql -U postgres $(PROJECT_NAME) < $(FILE)
+	@echo "Database restored."
+
+db-reset: ## Reset database (WARNING: deletes all data)
+	@echo "WARNING: This will delete all database data. Press Ctrl+C to cancel."
+	@sleep 5
+	docker-compose exec -T postgres psql -U postgres -c "DROP DATABASE IF EXISTS $(PROJECT_NAME);"
+	docker-compose exec -T postgres psql -U postgres -c "CREATE DATABASE $(PROJECT_NAME);"
+	@echo "Database reset complete."
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.cache}}
+redis-shell: ## Open Redis CLI
+	docker-compose exec redis redis-cli
+
+redis-flush: ## Flush all Redis data (WARNING: deletes all cache)
+	@echo "WARNING: This will delete all cached data. Press Ctrl+C to cancel."
+	@sleep 3
+	docker-compose exec redis redis-cli FLUSHALL
+	@echo "Redis cache cleared."
+
+redis-info: ## Show Redis information
+	docker-compose exec redis redis-cli INFO
+{{/if}}
+
+{{#if infrastructure.messageQueue}}
+nats-info: ## Show NATS server information
+	@curl -s http://localhost:8222/varz | jq .
+
+nats-streams: ## Show NATS JetStream streams
+	@curl -s http://localhost:8222/jsz | jq .
+{{/if}}
+
+logs-service: ## View logs for specific service (specify with SERVICE=service-name)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Error: Please specify service with SERVICE=service-name"; \
+		exit 1; \
+	fi
+	docker-compose logs -f $(SERVICE)
+
+shell: ## Open shell in service container (specify with SERVICE=service-name)
+	@if [ -z "$(SERVICE)" ]; then \
+		echo "Error: Please specify service with SERVICE=service-name"; \
+		exit 1; \
+	fi
+	docker-compose exec $(SERVICE) sh
+
+install: ## Install dependencies in all services
+{{#each services}}
+	@echo "Installing dependencies in {{this.name}}..."
+	docker-compose exec {{this.name}} pnpm install
+{{/each}}
+
+test: ## Run tests in all services
+{{#each services}}
+	@echo "Running tests in {{this.name}}..."
+	docker-compose exec {{this.name}} pnpm test
+{{/each}}
+
+dev: ## Start services in development mode with hot reload
+	docker-compose up
+
+prod: ## Start services in production mode
+	@echo "Starting services in production mode..."
+	NODE_ENV=production docker-compose up -d
+
+backup-all: ## Backup all data (database, volumes)
+	@mkdir -p backups
+	@echo "Creating full backup..."
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+	@docker-compose exec -T postgres pg_dump -U postgres $(PROJECT_NAME) > backups/$(PROJECT_NAME)-db-$(shell date +%Y%m%d-%H%M%S).sql
+{{/eq}}
+{{/if}}
+	@echo "Backing up volumes..."
+{{#each services}}
+{{#eq ../infrastructure.database.type "sqlite"}}
+	@docker run --rm -v $(PROJECT_NAME)-{{this.name}}-data:/data -v $(PWD)/backups:/backup alpine tar czf /backup/$(PROJECT_NAME)-{{this.name}}-data-$(shell date +%Y%m%d-%H%M%S).tar.gz -C /data .
+{{/eq}}
+{{/each}}
+	@echo "Backup complete. Files saved in backups/ directory"
+
+stats: ## Show resource usage statistics
+	docker stats --no-stream $(shell docker-compose ps -q)
+
+prune: ## Clean up unused Docker resources
+	@echo "Cleaning up unused Docker resources..."
+	docker system prune -f
+	@echo "Cleanup complete."
+
+network-inspect: ## Inspect Docker network
+	docker network inspect $(PROJECT_NAME)-network
+
+volumes: ## List all project volumes
+	@docker volume ls | grep $(PROJECT_NAME)
+
+env-check: ## Verify environment variables are set
+	@echo "Checking environment configuration..."
+	@if [ ! -f .env ]; then \
+		echo "ERROR: .env file not found. Copy .env.example to .env"; \
+		exit 1; \
+	fi
+	@echo "Environment file exists."
+	@echo "\nEnvironment variables:"
+	@grep -v '^#' .env | grep -v '^$$'
+
+init: ## Initialize project (copy .env, create directories)
+	@echo "Initializing project..."
+	@if [ ! -f .env ]; then \
+		cp .env.example .env; \
+		echo "Created .env file from .env.example"; \
+	else \
+		echo ".env file already exists"; \
+	fi
+	@mkdir -p backups
+	@mkdir -p logs
+	@echo "Initialization complete. Edit .env file and run 'make up' to start."

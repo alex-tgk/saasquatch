@@ -1,0 +1,224 @@
+version: '3.8'
+
+services:
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+  postgres:
+    image: postgres:{{#if infrastructure.database.version}}{{infrastructure.database.version}}{{else}}16-alpine{{/if}}
+    container_name: {{project.name}}-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-{{project.name}}}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+      TZ: ${TZ:-UTC}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - {{project.name}}-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-{{project.name}}}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+{{/eq}}
+{{#eq infrastructure.database.type "sqlite"}}
+  # SQLite does not require a separate container
+  # Database files will be stored in service volumes
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.cache}}
+{{#eq infrastructure.cache.type "redis"}}
+  redis:
+    image: redis:{{#if infrastructure.cache.version}}{{infrastructure.cache.version}}{{else}}7-alpine{{/if}}
+    container_name: {{project.name}}-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - {{project.name}}-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.messageQueue}}
+{{#eq infrastructure.messageQueue.type "nats"}}
+  nats:
+    image: nats:{{#if infrastructure.messageQueue.version}}{{infrastructure.messageQueue.version}}{{else}}2.10-alpine{{/if}}
+    container_name: {{project.name}}-nats
+    restart: unless-stopped
+    command: >
+      --jetstream
+      --store_dir /data
+      --max_file_store 1GB
+      --max_payload 1MB
+      --http_port 8222
+    ports:
+      - "${NATS_PORT:-4222}:4222"      # Client connections
+      - "${NATS_HTTP_PORT:-8222}:8222" # HTTP monitoring
+    volumes:
+      - nats_data:/data
+    networks:
+      - {{project.name}}-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8222/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+{{/eq}}
+{{/if}}
+
+{{#each services}}
+  {{this.name}}:
+    build:
+      context: ./services/{{this.name}}
+      dockerfile: Dockerfile
+    container_name: {{../project.name}}-{{this.name}}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: {{this.port}}
+      SERVICE_NAME: {{this.name}}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+{{#if this.features.database}}
+{{#eq ../infrastructure.database.type "postgresql"}}
+      DATABASE_URL: postgres://$${POSTGRES_USER:-postgres}:$${POSTGRES_PASSWORD:-postgres}@postgres:5432/$${POSTGRES_DB:-{{../project.name}}}
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${POSTGRES_USER:-postgres}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      DATABASE_NAME: ${POSTGRES_DB:-{{../project.name}}}
+{{/eq}}
+{{#eq ../infrastructure.database.type "sqlite"}}
+      DATABASE_URL: file:./data/{{this.name}}.db
+{{/eq}}
+{{/if}}
+{{#if this.features.cache}}
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+{{/if}}
+{{#if this.features.messageQueue}}
+      NATS_URL: nats://nats:4222
+      NATS_HOST: nats
+      NATS_PORT: 4222
+{{/if}}
+{{#if this.features.jwt}}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+{{/if}}
+    ports:
+      - "{{this.port}}:{{this.port}}"
+    volumes:
+{{#eq ../infrastructure.database.type "sqlite"}}
+      - {{this.name}}_data:/app/data
+{{/eq}}
+      - ./services/{{this.name}}/src:/app/src:ro
+      - {{this.name}}_node_modules:/app/node_modules
+    networks:
+      - {{../project.name}}-network
+    depends_on:
+{{#if this.features.database}}
+{{#eq ../infrastructure.database.type "postgresql"}}
+      postgres:
+        condition: service_healthy
+{{/eq}}
+{{/if}}
+{{#if this.features.cache}}
+      redis:
+        condition: service_healthy
+{{/if}}
+{{#if this.features.messageQueue}}
+      nats:
+        condition: service_healthy
+{{/if}}
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:{{this.port}}/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+{{/each}}
+
+networks:
+  {{project.name}}-network:
+    driver: bridge
+    name: {{project.name}}-network
+
+volumes:
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+  postgres_data:
+    driver: local
+    name: {{project.name}}-postgres-data
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+{{#eq infrastructure.cache.type "redis"}}
+  redis_data:
+    driver: local
+    name: {{project.name}}-redis-data
+{{/eq}}
+{{/if}}
+{{#if infrastructure.messageQueue}}
+{{#eq infrastructure.messageQueue.type "nats"}}
+  nats_data:
+    driver: local
+    name: {{project.name}}-nats-data
+{{/eq}}
+{{/if}}
+{{#each services}}
+{{#eq ../infrastructure.database.type "sqlite"}}
+  {{this.name}}_data:
+    driver: local
+    name: {{../project.name}}-{{this.name}}-data
+{{/eq}}
+  {{this.name}}_node_modules:
+    driver: local
+    name: {{../project.name}}-{{this.name}}-node-modules
+{{/each}}

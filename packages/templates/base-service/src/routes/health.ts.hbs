@@ -1,7 +1,37 @@
 import { FastifyPluginAsync } from 'fastify';
 
 export const healthRoutes: FastifyPluginAsync = async (fastify) => {
-  fastify.get('/health', async (request, reply) => {
+  fastify.get('/health', {
+    schema: {
+      description: 'Check if the service is running',
+      tags: ['Health'],
+      response: {
+        200: {
+          description: 'Service is healthy',
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['healthy'],
+              example: 'healthy',
+              description: 'Health status of the service',
+            },
+            service: {
+              type: 'string',
+              example: '{{service.name}}',
+              description: 'Name of the service',
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-01T00:00:00.000Z',
+              description: 'Timestamp of the health check',
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     return {
       status: 'healthy',
       service: '{{service.name}}',
@@ -9,7 +39,83 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
     };
   });
 
-  fastify.get('/ready', async (request, reply) => {
+  fastify.get('/ready', {
+    schema: {
+      description: 'Check if the service and its dependencies are ready',
+      tags: ['Health'],
+      response: {
+        200: {
+          description: 'Service and all dependencies are ready',
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['ready'],
+              example: 'ready',
+              description: 'Readiness status',
+            },
+            checks: {
+              type: 'object',
+              description: 'Individual dependency health checks',
+              properties: {
+                {{#if service.features.database}}database: {
+                  type: 'boolean',
+                  example: true,
+                  description: 'Database connection status',
+                },
+                {{/if}}{{#if service.features.cache}}redis: {
+                  type: 'boolean',
+                  example: true,
+                  description: 'Redis connection status',
+                },
+                {{/if}}{{#if service.features.messageQueue}}nats: {
+                  type: 'boolean',
+                  example: true,
+                  description: 'NATS connection status',
+                },
+                {{/if}}
+              },
+            },
+            service: {
+              type: 'string',
+              example: '{{service.name}}',
+              description: 'Name of the service',
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time',
+              example: '2024-01-01T00:00:00.000Z',
+              description: 'Timestamp of the readiness check',
+            },
+          },
+        },
+        503: {
+          description: 'Service or dependencies are not ready',
+          type: 'object',
+          properties: {
+            status: {
+              type: 'string',
+              enum: ['not ready'],
+              example: 'not ready',
+              description: 'Readiness status',
+            },
+            checks: {
+              type: 'object',
+              description: 'Individual dependency health checks',
+            },
+            service: {
+              type: 'string',
+              example: '{{service.name}}',
+            },
+            timestamp: {
+              type: 'string',
+              format: 'date-time',
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const checks: Record<string, boolean> = {};
 
     {{#if service.features.database}}// Check database

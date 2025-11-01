@@ -1,0 +1,221 @@
+import { Knex } from 'knex';
+import { CreateTenantSchemaOptions, TenantSchemaInfo } from '../types/tenant.types{{#unless (eq infrastructure.database.type "postgresql")}}.js{{/unless}}';
+
+/**
+ * TenantService manages multi-tenancy with schema-per-tenant pattern
+ *
+ * For PostgreSQL: Creates and manages separate schemas for each tenant
+ * For SQLite: Multi-tenancy uses row-level tenant_id filtering (simplified)
+ */
+export class TenantService {
+  constructor(private db: Knex) {}
+
+  /**
+   * Get the schema name for a tenant
+   */
+  getSchemaName(tenantId: string): string {
+    return `tenant_${tenantId}`;
+  }
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+  /**
+   * Set the PostgreSQL search_path to scope all queries to tenant schema
+   * This is the core of schema-per-tenant isolation
+   */
+  async setTenantContext(tenantId: string): Promise<void> {
+    const schemaName = this.getSchemaName(tenantId);
+
+    // Set search_path for this connection
+    // All subsequent queries will be scoped to this schema
+    await this.db.raw(`SET search_path TO ${schemaName}, public`);
+  }
+
+  /**
+   * Create a new tenant schema
+   */
+  async createTenantSchema(options: CreateTenantSchemaOptions): Promise<void> {
+    const { tenantId, copyFromTemplate = false } = options;
+    const schemaName = this.getSchemaName(tenantId);
+
+    // Check if schema already exists
+    const schemaExists = await this.schemaExists(tenantId);
+    if (schemaExists) {
+      throw new Error(`Schema for tenant ${tenantId} already exists`);
+    }
+
+    // Create the schema
+    await this.db.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
+
+    // Set search_path to new schema
+    await this.setTenantContext(tenantId);
+
+    // Run migrations for this tenant schema
+    // Migrations will create tables in the tenant schema
+    await this.db.migrate.latest();
+
+    if (copyFromTemplate) {
+      // Optionally copy data from a template schema
+      await this.copyFromTemplateSchema(schemaName);
+    }
+  }
+
+  /**
+   * Check if a tenant schema exists
+   */
+  async schemaExists(tenantId: string): Promise<boolean> {
+    const schemaName = this.getSchemaName(tenantId);
+
+    const result = await this.db.raw(
+      `SELECT schema_name
+       FROM information_schema.schemata
+       WHERE schema_name = ?`,
+      [schemaName]
+    );
+
+    return result.rows.length > 0;
+  }
+
+  /**
+   * Get tenant schema information
+   */
+  async getTenantSchemaInfo(tenantId: string): Promise<TenantSchemaInfo | null> {
+    const schemaName = this.getSchemaName(tenantId);
+
+    const exists = await this.schemaExists(tenantId);
+    if (!exists) {
+      return null;
+    }
+
+    // Get table count in schema
+    const result = await this.db.raw(
+      `SELECT COUNT(*) as count
+       FROM information_schema.tables
+       WHERE table_schema = ?`,
+      [schemaName]
+    );
+
+    return {
+      schemaName,
+      createdAt: new Date(), // Would need to query pg_namespace for actual creation time
+      tablesCount: parseInt(result.rows[0].count, 10),
+    };
+  }
+
+  /**
+   * Delete a tenant schema (WARNING: Destructive operation)
+   */
+  async deleteTenantSchema(tenantId: string): Promise<void> {
+    const schemaName = this.getSchemaName(tenantId);
+
+    // Drop schema and all objects in it
+    await this.db.raw(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
+  }
+
+  /**
+   * List all tenant schemas
+   */
+  async listTenantSchemas(): Promise<string[]> {
+    const result = await this.db.raw(
+      `SELECT schema_name
+       FROM information_schema.schemata
+       WHERE schema_name LIKE 'tenant_%'`
+    );
+
+    return result.rows.map((row: any) => row.schema_name);
+  }
+
+  /**
+   * Copy data from a template schema to a new tenant schema
+   */
+  private async copyFromTemplateSchema(targetSchema: string): Promise<void> {
+    const templateSchema = 'tenant_template';
+
+    // This is a simplified example - in production you'd need more robust copying
+    const tables = await this.db.raw(
+      `SELECT table_name
+       FROM information_schema.tables
+       WHERE table_schema = ?`,
+      [templateSchema]
+    );
+
+    for (const { table_name } of tables.rows) {
+      await this.db.raw(
+        `INSERT INTO ${targetSchema}.${table_name}
+         SELECT * FROM ${templateSchema}.${table_name}`
+      );
+    }
+  }
+{{else}}
+  /**
+   * For SQLite: Set tenant context in application memory
+   * SQLite doesn't support schemas, so we use row-level filtering
+   */
+  async setTenantContext(tenantId: string): Promise<void> {
+    // For SQLite, tenant context is managed in the application layer
+    // All queries should include WHERE tenant_id = ?
+    // This is a no-op here, actual filtering happens in queries
+  }
+
+  /**
+   * For SQLite: Create tenant record
+   */
+  async createTenantSchema(options: CreateTenantSchemaOptions): Promise<void> {
+    const { tenantId } = options;
+
+    // In SQLite mode, we just ensure the tenant exists in a tenants table
+    await this.db('tenants').insert({
+      id: tenantId,
+      created_at: new Date(),
+    }).onConflict('id').ignore();
+  }
+
+  /**
+   * Check if tenant exists
+   */
+  async schemaExists(tenantId: string): Promise<boolean> {
+    const result = await this.db('tenants')
+      .where('id', tenantId)
+      .first();
+
+    return !!result;
+  }
+
+  /**
+   * Get tenant information
+   */
+  async getTenantSchemaInfo(tenantId: string): Promise<TenantSchemaInfo | null> {
+    const tenant = await this.db('tenants')
+      .where('id', tenantId)
+      .first();
+
+    if (!tenant) {
+      return null;
+    }
+
+    return {
+      schemaName: `tenant_${tenantId}`, // Virtual schema name
+      createdAt: tenant.created_at,
+      tablesCount: 0, // Not applicable for SQLite
+    };
+  }
+
+  /**
+   * Delete a tenant (WARNING: Destructive operation)
+   */
+  async deleteTenantSchema(tenantId: string): Promise<void> {
+    // Delete all records with this tenant_id
+    // This would need to be done for each table that has tenant_id
+    await this.db('tenants').where('id', tenantId).del();
+    await this.db('users').where('tenant_id', tenantId).del();
+    // Add more tables as needed
+  }
+
+  /**
+   * List all tenants
+   */
+  async listTenantSchemas(): Promise<string[]> {
+    const tenants = await this.db('tenants').select('id');
+    return tenants.map(t => `tenant_${t.id}`);
+  }
+{{/if}}
+}

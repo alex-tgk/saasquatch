@@ -1,0 +1,528 @@
+# Multi-Tenancy Guide
+
+This service implements **schema-per-tenant multi-tenancy** for complete tenant isolation at the database level.
+
+## Overview
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+### PostgreSQL Schema-Per-Tenant
+
+Each tenant gets their own PostgreSQL schema, providing:
+- **Complete data isolation** - Tenants cannot access each other's data
+- **Performance** - No row-level filtering overhead
+- **Scalability** - Each tenant can have different schema versions
+- **Security** - Database-enforced isolation
+
+### How It Works
+
+1. **JWT Token** contains `tenantId`
+2. **Middleware** extracts `tenantId` from authenticated requests
+3. **TenantService** sets PostgreSQL `search_path` to `tenant_{tenantId}`
+4. **All queries** are automatically scoped to tenant schema
+{{else}}
+### SQLite Row-Level Multi-Tenancy
+
+SQLite doesn't support schemas, so multi-tenancy uses row-level filtering:
+- Each table has a `tenant_id` column
+- Queries must always include `WHERE tenant_id = ?`
+- Less isolation than schema-per-tenant
+- Simpler for small applications
+{{/if}}
+
+## Architecture
+
+```
+┌─────────────────┐
+│  Client Request │
+│  (with JWT)     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Auth Plugin    │
+│  Verifies JWT   │
+│  Sets user.tenantId
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Tenant         │
+│  Middleware     │
+│  Sets DB Context│
+└────────┬────────┘
+         │
+{{#if (eq infrastructure.database.type "postgresql")}}         ▼
+┌─────────────────┐
+│  PostgreSQL     │
+│  SET search_path│
+│  TO tenant_123  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  All Queries    │
+│  Scoped to      │
+│  tenant_123.*   │
+└─────────────────┘
+{{else}}         ▼
+┌─────────────────┐
+│  All Queries    │
+│  Include        │
+│  WHERE tenant_id│
+└─────────────────┘
+{{/if}}
+```
+
+## Components
+
+### 1. TenantService (`src/services/tenant.service.ts`)
+
+Manages tenant schemas:
+
+```typescript
+import { TenantService } from './services/tenant.service.js';
+
+const tenantService = new TenantService(db);
+
+// Create a new tenant schema
+await tenantService.createTenantSchema({ tenantId: 'acme-corp' });
+
+// Set context for queries
+await tenantService.setTenantContext('acme-corp');
+
+// Now all queries are scoped to tenant_acme_corp schema
+const users = await db('users').select('*');
+```
+
+### 2. Tenant Middleware (`src/middleware/tenant.middleware.ts`)
+
+Automatically sets tenant context on every request:
+
+```typescript
+import { createTenantMiddleware } from './middleware/tenant.middleware.js';
+
+const tenantMiddleware = createTenantMiddleware(tenantService);
+
+// Apply globally
+app.addHook('preHandler', tenantMiddleware);
+
+// Or per-route
+app.get('/users', {
+  preHandler: [app.authenticate, tenantMiddleware]
+}, handler);
+```
+
+### 3. Tenant Types (`src/types/tenant.types.ts`)
+
+TypeScript types for tenant operations.
+
+## Usage
+
+### Creating a New Tenant
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+```typescript
+// 1. Create tenant schema
+await tenantService.createTenantSchema({
+  tenantId: 'acme-corp',
+  copyFromTemplate: false, // Optional: copy from template schema
+});
+
+// 2. Schema is created: tenant_acme_corp
+// 3. Migrations run automatically in new schema
+// 4. Tenant is ready to use
+```
+{{else}}
+```typescript
+// 1. Create tenant record
+await tenantService.createTenantSchema({
+  tenantId: 'acme-corp',
+});
+
+// 2. Tenant record created in tenants table
+// 3. Ready to create users with tenant_id = 'acme-corp'
+```
+{{/if}}
+
+### Making Tenant-Scoped Requests
+
+```bash
+# 1. Authenticate and get JWT with tenantId
+POST /auth/login
+{
+  "email": "user@acme-corp.com",
+  "password": "password123"
+}
+
+# Response includes JWT with tenantId claim
+{
+  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "user": {
+    "id": "123",
+    "email": "user@acme-corp.com",
+    "tenantId": "acme-corp"
+  }
+}
+
+# 2. Use token in subsequent requests
+GET /users
+Authorization: Bearer <token>
+
+# Middleware automatically:
+# - Extracts tenantId from JWT
+{{#if (eq infrastructure.database.type "postgresql")}}# - Sets search_path to tenant_acme_corp
+{{else}}# - Adds WHERE tenant_id = 'acme-corp' to queries
+{{/if}}# - Returns only acme-corp's users
+```
+
+### Route Handler Example
+
+```typescript
+// No tenant logic needed in handlers!
+// Middleware handles everything
+
+app.get('/users', {
+  preHandler: [app.authenticate], // Tenant middleware runs automatically
+}, async (request, reply) => {
+  // This query is automatically scoped to the tenant
+  const users = await app.db('users').select('*');
+
+  // Access tenant context if needed
+  const { tenantId, schemaName } = request.tenantContext;
+
+  return {
+    users,
+    tenant: tenantId,
+  };
+});
+```
+
+## JWT Token Structure
+
+Your JWT tokens must include `tenantId`:
+
+```json
+{
+  "id": "user-123",
+  "email": "user@example.com",
+  "tenantId": "acme-corp",  // Required for multi-tenancy
+  "iat": 1234567890,
+  "exp": 1234567890
+}
+```
+
+## Public Routes
+
+Some routes don't require tenant context:
+
+```typescript
+// These routes bypass tenant middleware
+const publicPaths = ['/health', '/ready', '/docs', '/'];
+
+// In app.ts, middleware checks for public paths
+app.addHook('preHandler', async (request, reply) => {
+  const isPublicPath = publicPaths.some(path =>
+    request.url.startsWith(path)
+  );
+
+  if (isPublicPath) {
+    return; // Skip tenant middleware
+  }
+
+  // Apply tenant middleware for authenticated routes
+  if (request.user?.tenantId) {
+    return tenantMiddleware(request, reply, () => {});
+  }
+});
+```
+
+## Database Migrations
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+### PostgreSQL
+
+Migrations run per-tenant:
+
+```typescript
+// When creating a tenant, migrations run in that schema
+await tenantService.createTenantSchema({ tenantId: 'acme-corp' });
+// -> Sets search_path to tenant_acme_corp
+// -> Runs knex migrations
+// -> Creates tables in tenant_acme_corp schema
+
+// To run migrations for existing tenant
+await tenantService.setTenantContext('acme-corp');
+await db.migrate.latest();
+```
+
+### Migration Files
+
+```typescript
+// migrations/001_create_users.ts
+export async function up(knex) {
+  return knex.schema.createTable('users', (table) => {
+    table.increments('id');
+    table.string('name');
+    table.string('email').unique();
+    // NO tenant_id column needed - schema provides isolation
+  });
+}
+```
+{{else}}
+### SQLite
+
+Tables must include `tenant_id`:
+
+```typescript
+// migrations/001_create_users.ts
+export async function up(knex) {
+  return knex.schema.createTable('users', (table) => {
+    table.increments('id');
+    table.string('tenant_id').notNullable(); // Required
+    table.string('name');
+    table.string('email');
+    table.unique(['tenant_id', 'email']); // Unique per tenant
+    table.index('tenant_id'); // Important for performance
+  });
+}
+
+// Create tenants table
+export async function up(knex) {
+  return knex.schema.createTable('tenants', (table) => {
+    table.string('id').primary();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+}
+```
+
+### Querying with SQLite
+
+Always include tenant_id:
+
+```typescript
+// ❌ Wrong - no tenant filtering
+const users = await db('users').select('*');
+
+// ✅ Correct - filtered by tenant
+const users = await db('users')
+  .where('tenant_id', request.tenantContext.tenantId)
+  .select('*');
+```
+{{/if}}
+
+## Testing Tenant Isolation
+
+Run comprehensive tenant isolation tests:
+
+```bash
+npm test test/tenant.test.ts
+```
+
+Tests verify:
+- ✅ Tenant schemas are created correctly
+{{#if (eq infrastructure.database.type "postgresql")}}
+- ✅ `search_path` is set properly
+{{/if}}
+- ✅ Tenants cannot access each other's data
+- ✅ JWT middleware enforces tenant context
+- ✅ Security: Cross-tenant access is blocked
+
+## Security Considerations
+
+### 1. JWT Signature Verification
+
+Always verify JWT signatures to prevent token tampering:
+
+```typescript
+// JWT secret MUST be strong and secure
+JWT_SECRET=your-super-secret-jwt-key-minimum-32-characters
+
+// In production, use environment variable
+await app.register(jwt, {
+  secret: process.env.JWT_SECRET,
+});
+```
+
+### 2. Tenant ID Validation
+
+```typescript
+// Validate tenant ID format
+const TENANT_ID_REGEX = /^[a-z0-9-]+$/;
+
+if (!TENANT_ID_REGEX.test(tenantId)) {
+  throw new Error('Invalid tenant ID format');
+}
+```
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+### 3. SQL Injection Protection
+
+Knex automatically escapes values, but always use parameterized queries:
+
+```typescript
+// ✅ Safe - parameterized
+await db.raw('SET search_path TO ??', [`tenant_${tenantId}`]);
+
+// ❌ Dangerous - string interpolation
+await db.raw(`SET search_path TO tenant_${tenantId}`);
+```
+{{/if}}
+
+### 4. Tenant Schema Deletion
+
+```typescript
+// DANGER: This is destructive!
+// Require additional authorization
+app.delete('/admin/tenants/:id', {
+  preHandler: [requireSuperAdmin], // Only super admins
+}, async (request, reply) => {
+  const { id } = request.params;
+
+  // Require confirmation
+  if (request.body.confirmation !== id) {
+    throw new Error('Confirmation required');
+  }
+
+  await tenantService.deleteTenantSchema(id);
+  return { deleted: id };
+});
+```
+
+## Performance Tips
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+### PostgreSQL
+
+1. **Connection Pooling**: Each tenant uses same connection pool
+2. **Schema Caching**: PostgreSQL caches schema metadata
+3. **Indexes**: Create indexes per-tenant for best performance
+4. **Vacuum**: Run VACUUM per schema periodically
+
+```sql
+-- Vacuum specific tenant schema
+VACUUM ANALYZE tenant_acme_corp.users;
+```
+{{else}}
+### SQLite
+
+1. **Index tenant_id**: Critical for performance
+2. **Composite Indexes**: Create (tenant_id, other_column) indexes
+3. **Query Planning**: ANALYZE after bulk inserts
+
+```sql
+-- Ensure tenant_id is indexed
+CREATE INDEX idx_users_tenant ON users(tenant_id);
+
+-- Composite index for common queries
+CREATE INDEX idx_users_tenant_email ON users(tenant_id, email);
+```
+{{/if}}
+
+## Troubleshooting
+
+### "Tenant schema not found"
+
+**Cause**: JWT contains tenantId but schema doesn't exist
+
+**Solution**:
+```typescript
+// Create the tenant schema first
+await tenantService.createTenantSchema({ tenantId: 'acme-corp' });
+```
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+### Queries returning wrong data
+
+**Cause**: search_path not set correctly
+
+**Debug**:
+```typescript
+// Check current search_path
+const result = await db.raw('SHOW search_path');
+console.log(result.rows[0].search_path);
+// Should include your tenant schema
+```
+{{/if}}
+
+### Missing tenantId in JWT
+
+**Cause**: Auth service not including tenantId in token
+
+**Solution**:
+```typescript
+// In auth service, include tenantId when signing JWT
+const token = app.jwt.sign({
+  id: user.id,
+  email: user.email,
+  tenantId: user.tenant_id, // Must include this
+});
+```
+
+## Best Practices
+
+1. ✅ **Always verify tenant exists** before setting context
+2. ✅ **Use middleware** instead of manual tenant switching
+3. ✅ **Test tenant isolation** with integration tests
+4. ✅ **Log tenant context** for debugging and auditing
+5. ✅ **Validate tenant IDs** to prevent SQL injection
+{{#if (eq infrastructure.database.type "postgresql")}}
+6. ✅ **Use parameterized queries** for search_path
+7. ✅ **Run migrations per-tenant** when creating schemas
+{{else}}
+6. ✅ **Always include tenant_id** in WHERE clauses
+7. ✅ **Index tenant_id** on all tables
+{{/if}}
+
+## API Reference
+
+### TenantService
+
+```typescript
+class TenantService {
+  // Get schema name for tenant
+  getSchemaName(tenantId: string): string;
+
+  // Set database context to tenant
+  setTenantContext(tenantId: string): Promise<void>;
+
+  // Create new tenant schema
+  createTenantSchema(options: CreateTenantSchemaOptions): Promise<void>;
+
+  // Check if tenant exists
+  schemaExists(tenantId: string): Promise<boolean>;
+
+  // Get tenant information
+  getTenantSchemaInfo(tenantId: string): Promise<TenantSchemaInfo | null>;
+
+  // Delete tenant (destructive!)
+  deleteTenantSchema(tenantId: string): Promise<void>;
+
+  // List all tenants
+  listTenantSchemas(): Promise<string[]>;
+}
+```
+
+### Middleware
+
+```typescript
+// Create tenant middleware
+createTenantMiddleware(tenantService: TenantService): Function;
+
+// Require tenant context (additional validation)
+requireTenantContext(request, reply, done): void;
+```
+
+## Resources
+
+- [Fastify Hooks](https://fastify.dev/docs/latest/Reference/Hooks/)
+- [Knex.js Transactions](http://knexjs.org/guide/transactions.html)
+{{#if (eq infrastructure.database.type "postgresql")}}
+- [PostgreSQL Schemas](https://www.postgresql.org/docs/current/ddl-schemas.html)
+- [PostgreSQL search_path](https://www.postgresql.org/docs/current/runtime-config-client.html#GUC-SEARCH-PATH)
+{{else}}
+- [SQLite Multi-Tenancy Patterns](https://sqlite.org/sharedcache.html)
+{{/if}}
+
+---
+
+**Generated by SaaSQuatch CLI** - [Documentation]({{project.repository}})

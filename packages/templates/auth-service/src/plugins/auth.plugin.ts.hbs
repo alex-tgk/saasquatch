@@ -1,0 +1,91 @@
+import fp from 'fastify-plugin';
+import jwt from '@fastify/jwt';
+import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { TokenService } from '../services/token.service';
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    tokenService: TokenService;
+  }
+
+  interface FastifyRequest {
+    user?: {
+      userId: string;
+      email: string;
+      tenantId?: string;
+    };
+  }
+}
+
+export default fp(
+  async (fastify: FastifyInstance) => {
+    // Register @fastify/jwt
+    await fastify.register(jwt, {
+      secret: process.env.JWT_SECRET || 'your-secret-key-change-in-production',
+      sign: {
+        expiresIn: '15m', // Default for access tokens
+      },
+    });
+
+    // Decorate Fastify instance with TokenService
+    const tokenService = new TokenService(fastify, fastify.redis);
+    fastify.decorate('tokenService', tokenService);
+
+    // Decorate with authenticate method
+    fastify.decorate('authenticate', async function (
+      request: FastifyRequest,
+      reply: FastifyReply
+    ) {
+      try {
+        // Extract token from Authorization header
+        const authHeader = request.headers.authorization;
+
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          return reply.status(401).send({
+            error: 'Unauthorized',
+            message: 'Missing or invalid authorization header',
+          });
+        }
+
+        const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+
+        // Verify token using TokenService
+        const decoded = await tokenService.verifyToken(token);
+
+        // Ensure it's an access token
+        if ((decoded as any).type !== 'access') {
+          return reply.status(401).send({
+            error: 'Unauthorized',
+            message: 'Invalid token type',
+          });
+        }
+
+        // Attach user info to request
+        request.user = {
+          userId: decoded.userId,
+          email: decoded.email,
+          tenantId: (decoded as any).tenantId,
+        };
+
+        fastify.log.debug(
+          { userId: request.user.userId, path: request.url },
+          'User authenticated'
+        );
+      } catch (error) {
+        fastify.log.warn({ error, path: request.url }, 'Authentication failed');
+
+        return reply.status(401).send({
+          error: 'Unauthorized',
+          message: error instanceof Error ? error.message : 'Authentication failed',
+        });
+      }
+    });
+
+    fastify.log.info('Auth plugin registered successfully');
+  },
+  {
+    name: 'auth-plugin',
+    dependencies: ['redis-plugin', 'jwt'],
+  }
+);

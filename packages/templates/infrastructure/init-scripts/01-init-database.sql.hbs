@@ -1,0 +1,50 @@
+-- PostgreSQL Initialization Script for {{project.name}}
+-- This script runs automatically when the PostgreSQL container first starts
+
+-- Enable required extensions
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+{{#if infrastructure.database.multiTenancy.enabled}}
+{{#eq infrastructure.database.multiTenancy.model "schema-per-tenant"}}
+-- Create default tenant schema
+CREATE SCHEMA IF NOT EXISTS tenant_default;
+
+-- Grant privileges on default tenant schema
+GRANT ALL PRIVILEGES ON SCHEMA tenant_default TO {{#if project.name}}{{project.name}}_user{{else}}postgres{{/if}};
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA tenant_default TO {{#if project.name}}{{project.name}}_user{{else}}postgres{{/if}};
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA tenant_default TO {{#if project.name}}{{project.name}}_user{{else}}postgres{{/if}};
+
+-- Create function to create new tenant schemas
+CREATE OR REPLACE FUNCTION create_tenant_schema(tenant_id TEXT)
+RETURNS VOID AS $$
+BEGIN
+    EXECUTE format('CREATE SCHEMA IF NOT EXISTS tenant_%s', tenant_id);
+    EXECUTE format('GRANT ALL PRIVILEGES ON SCHEMA tenant_%s TO {{#if project.name}}{{project.name}}_user{{else}}postgres{{/if}}', tenant_id);
+END;
+$$ LANGUAGE plpgsql;
+{{/eq}}
+{{/if}}
+
+-- Create application-specific database user (if not using default postgres user)
+-- DO $$
+-- BEGIN
+--     IF NOT EXISTS (SELECT FROM pg_user WHERE usename = '{{project.name}}_user') THEN
+--         CREATE USER {{project.name}}_user WITH PASSWORD 'change_me_in_production';
+--     END IF;
+-- END
+-- $$;
+
+-- Grant privileges to application user
+-- GRANT ALL PRIVILEGES ON DATABASE {{project.name}} TO {{project.name}}_user;
+-- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO {{project.name}}_user;
+-- ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO {{project.name}}_user;
+
+-- Set default search path
+-- ALTER DATABASE {{project.name}} SET search_path TO public;
+
+-- Log initialization completion
+DO $$
+BEGIN
+    RAISE NOTICE 'Database initialization completed for {{project.name}}';
+END $$;

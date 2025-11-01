@@ -1,0 +1,489 @@
+import { FastifyPluginAsync } from 'fastify';
+import { Type, Static } from '@sinclair/typebox';
+import {
+  publishUserCreated,
+  publishUserUpdated,
+  publishUserDeleted,
+  UserCreatedEvent,
+  UserUpdatedEvent,
+  UserDeletedEvent,
+} from '../events/user.events.js';
+
+// TypeBox schemas
+const UserSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+  email: Type.String({ format: 'email' }),
+  name: Type.String({ minLength: 1, maxLength: 255 }),
+  created_at: Type.String({ format: 'date-time' }),
+  updated_at: Type.String({ format: 'date-time' }),
+  deleted_at: Type.Union([Type.String({ format: 'date-time' }), Type.Null()]),
+});
+
+const CreateUserSchema = Type.Object({
+  email: Type.String({ format: 'email' }),
+  name: Type.String({ minLength: 1, maxLength: 255 }),
+});
+
+const UpdateUserSchema = Type.Object({
+  email: Type.Optional(Type.String({ format: 'email' })),
+  name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+});
+
+const PaginationQuerySchema = Type.Object({
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100, default: 10 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
+});
+
+const UserIdParamSchema = Type.Object({
+  id: Type.String({ format: 'uuid' }),
+});
+
+const ListUsersResponseSchema = Type.Object({
+  data: Type.Array(UserSchema),
+  pagination: Type.Object({
+    limit: Type.Integer(),
+    offset: Type.Integer(),
+    total: Type.Integer(),
+  }),
+});
+
+const ErrorResponseSchema = Type.Object({
+  statusCode: Type.Integer(),
+  error: Type.String(),
+  message: Type.String(),
+});
+
+// Type exports
+type User = Static<typeof UserSchema>;
+type CreateUser = Static<typeof CreateUserSchema>;
+type UpdateUser = Static<typeof UpdateUserSchema>;
+type PaginationQuery = Static<typeof PaginationQuerySchema>;
+
+export const userRoutes: FastifyPluginAsync = async (fastify) => {
+  // GET /users - List users with pagination
+  fastify.get(
+    '/users',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        description: 'List all users with pagination',
+        tags: ['users'],
+        querystring: PaginationQuerySchema,
+        response: {
+          200: ListUsersResponseSchema,
+          401: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { limit = 10, offset = 0 } = request.query as PaginationQuery;
+{{#if infrastructure.database.multiTenancy}}
+      // Multi-tenancy: Get tenant from JWT
+      const tenantId = request.user?.tenantId;
+      if (!tenantId) {
+        reply.code(400);
+        return { error: 'Bad Request', message: 'Tenant ID not found in token' };
+      }
+
+      // Set schema for tenant
+      await fastify.db.raw(`SET search_path TO tenant_${tenantId}`);
+{{/if}}
+
+      try {
+        // Get total count
+        const [{ count }] = await fastify.db('users')
+          .whereNull('deleted_at')
+          .count('* as count');
+
+        // Get paginated users
+        const users = await fastify.db('users')
+          .select('id', 'email', 'name', 'created_at', 'updated_at', 'deleted_at')
+          .whereNull('deleted_at')
+          .limit(limit)
+          .offset(offset)
+          .orderBy('created_at', 'desc');
+
+        return {
+          data: users,
+          pagination: {
+            limit,
+            offset,
+            total: parseInt(count as string, 10),
+          },
+        };
+      } catch (error) {
+        fastify.log.error(error, 'Error fetching users');
+        reply.code(500);
+        return {
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch users',
+        };
+      }
+    }
+  );
+
+  // GET /users/:id - Get single user
+  fastify.get(
+    '/users/:id',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        description: 'Get a user by ID',
+        tags: ['users'],
+        params: UserIdParamSchema,
+        response: {
+          200: UserSchema,
+          401: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+{{#if infrastructure.database.multiTenancy}}
+      // Multi-tenancy: Get tenant from JWT
+      const tenantId = request.user?.tenantId;
+      if (!tenantId) {
+        reply.code(400);
+        return { error: 'Bad Request', message: 'Tenant ID not found in token' };
+      }
+
+      // Set schema for tenant
+      await fastify.db.raw(`SET search_path TO tenant_${tenantId}`);
+{{/if}}
+
+      try {
+        const user = await fastify.db('users')
+          .select('id', 'email', 'name', 'created_at', 'updated_at', 'deleted_at')
+          .where({ id })
+          .whereNull('deleted_at')
+          .first();
+
+        if (!user) {
+          reply.code(404);
+          return {
+            statusCode: 404,
+            error: 'Not Found',
+            message: `User with ID ${id} not found`,
+          };
+        }
+
+        return user;
+      } catch (error) {
+        fastify.log.error(error, 'Error fetching user');
+        reply.code(500);
+        return {
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to fetch user',
+        };
+      }
+    }
+  );
+
+  // POST /users - Create user
+  fastify.post(
+    '/users',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        description: 'Create a new user',
+        tags: ['users'],
+        body: CreateUserSchema,
+        response: {
+          201: UserSchema,
+          400: ErrorResponseSchema,
+          401: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const userData = request.body as CreateUser;
+{{#if infrastructure.database.multiTenancy}}
+      // Multi-tenancy: Get tenant from JWT
+      const tenantId = request.user?.tenantId;
+      if (!tenantId) {
+        reply.code(400);
+        return { error: 'Bad Request', message: 'Tenant ID not found in token' };
+      }
+
+      // Set schema for tenant
+      await fastify.db.raw(`SET search_path TO tenant_${tenantId}`);
+{{/if}}
+
+      try {
+        // Check if user with email already exists
+        const existingUser = await fastify.db('users')
+          .where({ email: userData.email })
+          .whereNull('deleted_at')
+          .first();
+
+        if (existingUser) {
+          reply.code(409);
+          return {
+            statusCode: 409,
+            error: 'Conflict',
+            message: 'User with this email already exists',
+          };
+        }
+
+        // Create user
+        const [user] = await fastify.db('users')
+          .insert({
+            email: userData.email,
+            name: userData.name,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .returning(['id', 'email', 'name', 'created_at', 'updated_at', 'deleted_at']);
+
+        fastify.log.info({ userId: user.id }, 'User created successfully');
+
+{{#if infrastructure.messageQueue}}
+        // Publish user.created event
+        const createEvent: UserCreatedEvent = {
+          userId: user.id,
+          email: user.email,
+{{#if infrastructure.database.multiTenancy}}
+          tenantId,
+{{else}}
+          tenantId: 'default',
+{{/if}}
+          timestamp: Date.now(),
+        };
+
+        // Publish asynchronously (don't block response)
+        publishUserCreated(fastify, createEvent).catch((error) => {
+          fastify.log.error({ error, userId: user.id }, 'Failed to publish user.created event');
+        });
+{{/if}}
+
+        reply.code(201);
+        return user;
+      } catch (error) {
+        fastify.log.error(error, 'Error creating user');
+        reply.code(500);
+        return {
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to create user',
+        };
+      }
+    }
+  );
+
+  // PUT /users/:id - Update user
+  fastify.put(
+    '/users/:id',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        description: 'Update a user',
+        tags: ['users'],
+        params: UserIdParamSchema,
+        body: UpdateUserSchema,
+        response: {
+          200: UserSchema,
+          400: ErrorResponseSchema,
+          401: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const updateData = request.body as UpdateUser;
+{{#if infrastructure.database.multiTenancy}}
+      // Multi-tenancy: Get tenant from JWT
+      const tenantId = request.user?.tenantId;
+      if (!tenantId) {
+        reply.code(400);
+        return { error: 'Bad Request', message: 'Tenant ID not found in token' };
+      }
+
+      // Set schema for tenant
+      await fastify.db.raw(`SET search_path TO tenant_${tenantId}`);
+{{/if}}
+
+      try {
+        // Check if user exists
+        const existingUser = await fastify.db('users')
+          .where({ id })
+          .whereNull('deleted_at')
+          .first();
+
+        if (!existingUser) {
+          reply.code(404);
+          return {
+            statusCode: 404,
+            error: 'Not Found',
+            message: `User with ID ${id} not found`,
+          };
+        }
+
+        // If email is being updated, check for conflicts
+        if (updateData.email && updateData.email !== existingUser.email) {
+          const emailConflict = await fastify.db('users')
+            .where({ email: updateData.email })
+            .whereNull('deleted_at')
+            .whereNot({ id })
+            .first();
+
+          if (emailConflict) {
+            reply.code(409);
+            return {
+              statusCode: 409,
+              error: 'Conflict',
+              message: 'User with this email already exists',
+            };
+          }
+        }
+
+        // Track changes for event
+        const changes: Record<string, any> = {};
+        if (updateData.email && updateData.email !== existingUser.email) {
+          changes.email = { from: existingUser.email, to: updateData.email };
+        }
+        if (updateData.name && updateData.name !== existingUser.name) {
+          changes.name = { from: existingUser.name, to: updateData.name };
+        }
+
+        // Update user
+        const [updatedUser] = await fastify.db('users')
+          .where({ id })
+          .update({
+            ...updateData,
+            updated_at: new Date().toISOString(),
+          })
+          .returning(['id', 'email', 'name', 'created_at', 'updated_at', 'deleted_at']);
+
+        fastify.log.info({ userId: id }, 'User updated successfully');
+
+{{#if infrastructure.messageQueue}}
+        // Publish user.updated event
+        const updateEvent: UserUpdatedEvent = {
+          userId: id,
+          changes,
+{{#if infrastructure.database.multiTenancy}}
+          tenantId,
+{{else}}
+          tenantId: 'default',
+{{/if}}
+          timestamp: Date.now(),
+        };
+
+        // Publish asynchronously (don't block response)
+        publishUserUpdated(fastify, updateEvent).catch((error) => {
+          fastify.log.error({ error, userId: id }, 'Failed to publish user.updated event');
+        });
+{{/if}}
+
+        return updatedUser;
+      } catch (error) {
+        fastify.log.error(error, 'Error updating user');
+        reply.code(500);
+        return {
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to update user',
+        };
+      }
+    }
+  );
+
+  // DELETE /users/:id - Soft delete user
+  fastify.delete(
+    '/users/:id',
+    {
+      onRequest: [fastify.authenticate],
+      schema: {
+        description: 'Soft delete a user (sets deleted_at timestamp)',
+        tags: ['users'],
+        params: UserIdParamSchema,
+        response: {
+          204: Type.Null(),
+          401: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+{{#if infrastructure.database.multiTenancy}}
+      // Multi-tenancy: Get tenant from JWT
+      const tenantId = request.user?.tenantId;
+      if (!tenantId) {
+        reply.code(400);
+        return { error: 'Bad Request', message: 'Tenant ID not found in token' };
+      }
+
+      // Set schema for tenant
+      await fastify.db.raw(`SET search_path TO tenant_${tenantId}`);
+{{/if}}
+
+      try {
+        // Check if user exists and is not already deleted
+        const existingUser = await fastify.db('users')
+          .where({ id })
+          .whereNull('deleted_at')
+          .first();
+
+        if (!existingUser) {
+          reply.code(404);
+          return {
+            statusCode: 404,
+            error: 'Not Found',
+            message: `User with ID ${id} not found`,
+          };
+        }
+
+        // Soft delete user
+        await fastify.db('users')
+          .where({ id })
+          .update({
+            deleted_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+
+        fastify.log.info({ userId: id }, 'User soft deleted successfully');
+
+{{#if infrastructure.messageQueue}}
+        // Publish user.deleted event
+        const deleteEvent: UserDeletedEvent = {
+          userId: id,
+{{#if infrastructure.database.multiTenancy}}
+          tenantId,
+{{else}}
+          tenantId: 'default',
+{{/if}}
+          timestamp: Date.now(),
+        };
+
+        // Publish asynchronously (don't block response)
+        publishUserDeleted(fastify, deleteEvent).catch((error) => {
+          fastify.log.error({ error, userId: id }, 'Failed to publish user.deleted event');
+        });
+{{/if}}
+
+        reply.code(204);
+        return;
+      } catch (error) {
+        fastify.log.error(error, 'Error deleting user');
+        reply.code(500);
+        return {
+          statusCode: 500,
+          error: 'Internal Server Error',
+          message: 'Failed to delete user',
+        };
+      }
+    }
+  );
+};

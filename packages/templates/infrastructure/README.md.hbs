@@ -1,0 +1,445 @@
+# {{project.name}} Infrastructure
+
+This directory contains Docker Compose configuration and infrastructure setup for the {{project.name}} microservices project.
+
+## Overview
+
+This infrastructure setup includes:
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+- **PostgreSQL {{infrastructure.database.version}}** - Primary database with data persistence
+{{/eq}}
+{{#eq infrastructure.database.type "sqlite"}}
+- **SQLite** - Embedded database (no separate container required)
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+- **Redis {{infrastructure.cache.version}}** - Caching layer with persistence
+{{/if}}
+{{#if infrastructure.messageQueue}}
+- **NATS {{infrastructure.messageQueue.version}}** - Message queue with JetStream enabled
+{{/if}}
+- **Service Containers** - All microservices with health checks and auto-restart
+
+## Quick Start
+
+### Prerequisites
+
+- Docker Engine 20.10+
+- Docker Compose V2+
+- At least 2GB available RAM
+- Ports available: {{#each services}}{{this.port}}{{#unless @last}}, {{/unless}}{{/each}}{{#if infrastructure.database}}{{#eq infrastructure.database.type "postgresql"}}, 5432{{/eq}}{{/if}}{{#if infrastructure.cache}}, 6379{{/if}}{{#if infrastructure.messageQueue}}, 4222, 8222{{/if}}
+
+### Initial Setup
+
+1. **Copy environment file:**
+   ```bash
+   cp .env.example .env
+   ```
+
+2. **Update environment variables:**
+   Edit `.env` and update:
+   - `JWT_SECRET` - Use a secure random string (min 32 characters)
+   - `POSTGRES_PASSWORD` - Use a strong password for production
+   - Any service-specific configuration
+
+3. **Start infrastructure:**
+   ```bash
+   # Start all services
+   docker-compose up -d
+
+   # View logs
+   docker-compose logs -f
+
+   # Check service health
+   docker-compose ps
+   ```
+
+### Service URLs
+
+{{#each services}}
+- **{{this.name}}**: http://localhost:{{this.port}}
+  - Health: http://localhost:{{this.port}}/health
+{{#if this.features.swagger}}
+  - Swagger: http://localhost:{{this.port}}/docs
+{{/if}}
+{{/each}}
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+- **PostgreSQL**: localhost:5432
+  - Database: `{{project.name}}`
+  - User: `postgres` (default)
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+- **Redis**: localhost:6379
+{{/if}}
+{{#if infrastructure.messageQueue}}
+- **NATS**:
+  - Client: localhost:4222
+  - Monitoring: http://localhost:8222
+{{/if}}
+
+## Management Commands
+
+### Start Services
+
+```bash
+# Start all services
+docker-compose up -d
+
+# Start specific service
+docker-compose up -d {{#if services}}{{services.[0].name}}{{/if}}
+
+# Start with rebuild
+docker-compose up -d --build
+```
+
+### Stop Services
+
+```bash
+# Stop all services
+docker-compose down
+
+# Stop and remove volumes (WARNING: deletes data)
+docker-compose down -v
+
+# Stop specific service
+docker-compose stop {{#if services}}{{services.[0].name}}{{/if}}
+```
+
+### View Logs
+
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker-compose logs -f {{#if services}}{{services.[0].name}}{{/if}}
+
+# Last 100 lines
+docker-compose logs --tail=100
+```
+
+### Service Management
+
+```bash
+# Restart service
+docker-compose restart {{#if services}}{{services.[0].name}}{{/if}}
+
+# View service status
+docker-compose ps
+
+# Execute command in service
+docker-compose exec {{#if services}}{{services.[0].name}}{{/if}} sh
+```
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+### Database Management
+
+#### Connect to PostgreSQL
+
+```bash
+# Using docker-compose
+docker-compose exec postgres psql -U postgres -d {{project.name}}
+
+# Using psql client
+psql -h localhost -U postgres -d {{project.name}}
+```
+
+#### Create Database Backup
+
+```bash
+# Backup to file
+docker-compose exec postgres pg_dump -U postgres {{project.name}} > backup.sql
+
+# Backup with compression
+docker-compose exec postgres pg_dump -U postgres {{project.name}} | gzip > backup.sql.gz
+```
+
+#### Restore Database
+
+```bash
+# Restore from backup
+docker-compose exec -T postgres psql -U postgres {{project.name}} < backup.sql
+
+# Restore from compressed backup
+gunzip -c backup.sql.gz | docker-compose exec -T postgres psql -U postgres {{project.name}}
+```
+
+{{#if infrastructure.database.multiTenancy.enabled}}
+#### Multi-Tenancy Management
+
+This project uses **{{infrastructure.database.multiTenancy.model}}** for multi-tenancy.
+
+Create a new tenant schema:
+
+```sql
+-- Connect to database
+docker-compose exec postgres psql -U postgres -d {{project.name}}
+
+-- Create tenant schema
+SELECT create_tenant_schema('tenant_123');
+
+-- Set search path to tenant
+SET search_path TO tenant_tenant_123;
+
+-- Now all queries run in tenant context
+```
+{{/if}}
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.cache}}
+### Redis Management
+
+#### Connect to Redis
+
+```bash
+# Using docker-compose
+docker-compose exec redis redis-cli
+
+# Check Redis info
+docker-compose exec redis redis-cli INFO
+
+# Monitor commands
+docker-compose exec redis redis-cli MONITOR
+```
+
+#### Common Redis Commands
+
+```bash
+# Flush all data (WARNING: deletes all cache)
+docker-compose exec redis redis-cli FLUSHALL
+
+# Check memory usage
+docker-compose exec redis redis-cli INFO memory
+
+# Get all keys (avoid in production with large datasets)
+docker-compose exec redis redis-cli KEYS '*'
+```
+{{/if}}
+
+{{#if infrastructure.messageQueue}}
+### NATS Management
+
+#### View NATS Status
+
+```bash
+# NATS server info
+curl http://localhost:8222/varz
+
+# JetStream info
+curl http://localhost:8222/jsz
+
+# Connections
+curl http://localhost:8222/connz
+```
+
+#### Using NATS CLI (if installed)
+
+```bash
+# Subscribe to subject
+nats sub "events.>"
+
+# Publish message
+nats pub "events.user.created" '{"userId": "123"}'
+
+# View streams
+nats stream ls
+
+# View consumers
+nats consumer ls
+```
+{{/if}}
+
+## Health Checks
+
+All services include health checks that run automatically. Check health status:
+
+```bash
+# View health status
+docker-compose ps
+
+# Service-specific health check
+curl http://localhost:{{#if services}}{{services.[0].port}}{{else}}3000{{/if}}/health
+```
+
+Health check endpoints return:
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "uptime": 12345,
+  "dependencies": {
+{{#if infrastructure.database}}
+    "database": "healthy",
+{{/if}}
+{{#if infrastructure.cache}}
+    "redis": "healthy",
+{{/if}}
+{{#if infrastructure.messageQueue}}
+    "nats": "healthy"
+{{/if}}
+  }
+}
+```
+
+## Data Persistence
+
+All data is stored in Docker volumes:
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+- **{{project.name}}-postgres-data**: PostgreSQL data directory
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+- **{{project.name}}-redis-data**: Redis persistence files (AOF + RDB)
+{{/if}}
+{{#if infrastructure.messageQueue}}
+- **{{project.name}}-nats-data**: NATS JetStream data
+{{/if}}
+{{#each services}}
+- **{{../project.name}}-{{this.name}}-node-modules**: Node.js dependencies for {{this.name}}
+{{#eq ../infrastructure.database.type "sqlite"}}
+- **{{../project.name}}-{{this.name}}-data**: SQLite database for {{this.name}}
+{{/eq}}
+{{/each}}
+
+### Backup Volumes
+
+```bash
+# List all volumes
+docker volume ls | grep {{project.name}}
+
+# Backup volume to tar
+docker run --rm \
+  -v {{project.name}}-postgres-data:/data \
+  -v $(pwd):/backup \
+  alpine tar czf /backup/postgres-backup.tar.gz -C /data .
+
+# Restore volume from tar
+docker run --rm \
+  -v {{project.name}}-postgres-data:/data \
+  -v $(pwd):/backup \
+  alpine sh -c "cd /data && tar xzf /backup/postgres-backup.tar.gz"
+```
+
+## Networking
+
+All services communicate through the `{{project.name}}-network` bridge network.
+
+Services can reference each other by service name:
+- `postgres:5432`
+- `redis:6379`
+- `nats:4222`
+- `{{#if services}}{{services.[0].name}}:{{services.[0].port}}{{/if}}`
+
+## Troubleshooting
+
+### Container won't start
+
+```bash
+# Check logs
+docker-compose logs {{#if services}}{{services.[0].name}}{{/if}}
+
+# Check container status
+docker-compose ps
+
+# Inspect container
+docker-compose inspect {{#if services}}{{services.[0].name}}{{/if}}
+```
+
+### Port already in use
+
+```bash
+# Find process using port
+lsof -i :{{#if services}}{{services.[0].port}}{{else}}3000{{/if}}
+
+# Kill process (macOS/Linux)
+kill -9 $(lsof -ti:{{#if services}}{{services.[0].port}}{{else}}3000{{/if}})
+
+# Or change port in .env file
+```
+
+### Database connection issues
+
+```bash
+# Check PostgreSQL logs
+docker-compose logs postgres
+
+# Test connection
+docker-compose exec postgres pg_isready -U postgres
+
+# Verify network
+docker network inspect {{project.name}}-network
+```
+
+### Clear all data and restart
+
+```bash
+# Stop and remove everything
+docker-compose down -v
+
+# Remove images
+docker-compose down --rmi all
+
+# Start fresh
+docker-compose up -d --build
+```
+
+## Production Deployment
+
+**Important**: This Docker Compose setup is designed for development. For production:
+
+1. **Security**:
+   - Change all default passwords
+   - Use secrets management (Docker Secrets, Vault)
+   - Enable SSL/TLS
+   - Configure firewall rules
+   - Use non-root users in containers
+
+2. **Performance**:
+   - Adjust resource limits (CPU, memory)
+   - Configure connection pooling
+   - Optimize cache policies
+   - Enable monitoring and metrics
+
+3. **Reliability**:
+   - Set up automated backups
+   - Configure log rotation
+   - Implement monitoring/alerting
+   - Use orchestration (Kubernetes, Docker Swarm)
+
+4. **Networking**:
+   - Use reverse proxy (Nginx, Traefik)
+   - Configure load balancing
+   - Set up service mesh (optional)
+
+## Additional Resources
+
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+- [Redis Documentation](https://redis.io/documentation)
+{{/if}}
+{{#if infrastructure.messageQueue}}
+- [NATS Documentation](https://docs.nats.io/)
+{{/if}}
+- [Project Documentation](../docs/)
+
+## Support
+
+For issues or questions:
+- Check service logs: `docker-compose logs`
+- Review health endpoints
+- Consult service-specific README files in `services/` directory

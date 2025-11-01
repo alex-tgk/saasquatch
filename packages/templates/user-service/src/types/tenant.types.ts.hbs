@@ -1,0 +1,26 @@
+/**
+ * Tenant-related type definitions
+ * Used for multi-tenancy with schema-per-tenant pattern
+ */
+
+export interface TenantContext {
+  tenantId: string;
+  schemaName: string;
+}
+
+export interface TenantUser {
+  id: string;
+  email: string;
+  tenantId: string;
+}
+
+export interface CreateTenantSchemaOptions {
+  tenantId: string;
+  copyFromTemplate?: boolean;
+}
+
+export interface TenantSchemaInfo {
+  schemaName: string;
+  createdAt: Date;
+  tablesCount: number;
+}

@@ -1,0 +1,320 @@
+{{#if (eq infrastructure.database.type "postgresql")}}import { test } from 'tap';
+import { buildApp } from '../src/app.js';
+import { TenantService } from '../src/services/tenant.service.js';
+
+/**
+ * Multi-Tenancy Integration Tests
+ *
+ * These tests verify that tenant isolation works correctly:
+ * 1. Tenant schemas are created properly
+ * 2. Queries are scoped to the correct tenant schema
+ * 3. Tenants cannot access each other's data
+ * 4. JWT token with tenantId correctly sets search_path
+ */
+
+test('Tenant Service - Schema Management', async (t) => {
+  const app = await buildApp({ logger: false });
+  const tenantService = new TenantService(app.db);
+
+  await t.test('should create a tenant schema', async (t) => {
+    const tenantId = 'test-tenant-1';
+
+    // Clean up if exists
+    try {
+      await tenantService.deleteTenantSchema(tenantId);
+    } catch (error) {
+      // Ignore error if schema doesn't exist
+    }
+
+    // Create tenant schema
+    await tenantService.createTenantSchema({ tenantId });
+
+    // Verify schema exists
+    const exists = await tenantService.schemaExists(tenantId);
+    t.equal(exists, true, 'Tenant schema should exist');
+
+    // Get schema info
+    const info = await tenantService.getTenantSchemaInfo(tenantId);
+    t.ok(info, 'Should return schema info');
+    t.equal(info?.schemaName, `tenant_${tenantId}`, 'Schema name should match pattern');
+
+    // Cleanup
+    await tenantService.deleteTenantSchema(tenantId);
+  });
+
+  await t.test('should list all tenant schemas', async (t) => {
+    const tenant1 = 'list-test-1';
+    const tenant2 = 'list-test-2';
+
+    // Clean up
+    try {
+      await tenantService.deleteTenantSchema(tenant1);
+      await tenantService.deleteTenantSchema(tenant2);
+    } catch (error) {
+      // Ignore
+    }
+
+    // Create two tenant schemas
+    await tenantService.createTenantSchema({ tenantId: tenant1 });
+    await tenantService.createTenantSchema({ tenantId: tenant2 });
+
+    // List schemas
+    const schemas = await tenantService.listTenantSchemas();
+    t.ok(schemas.includes(`tenant_${tenant1}`), 'Should include tenant 1');
+    t.ok(schemas.includes(`tenant_${tenant2}`), 'Should include tenant 2');
+
+    // Cleanup
+    await tenantService.deleteTenantSchema(tenant1);
+    await tenantService.deleteTenantSchema(tenant2);
+  });
+
+  await t.test('should throw error if creating duplicate schema', async (t) => {
+    const tenantId = 'duplicate-test';
+
+    // Clean up
+    try {
+      await tenantService.deleteTenantSchema(tenantId);
+    } catch (error) {
+      // Ignore
+    }
+
+    // Create first time
+    await tenantService.createTenantSchema({ tenantId });
+
+    // Try to create again - should fail
+    try {
+      await tenantService.createTenantSchema({ tenantId });
+      t.fail('Should have thrown error for duplicate schema');
+    } catch (error: any) {
+      t.ok(error.message.includes('already exists'), 'Should throw duplicate error');
+    }
+
+    // Cleanup
+    await tenantService.deleteTenantSchema(tenantId);
+  });
+
+  await app.close();
+});
+
+test('Tenant Context Middleware', async (t) => {
+  const app = await buildApp({ logger: false });
+  const tenantService = new TenantService(app.db);
+
+  const tenant1 = 'context-test-1';
+  const tenant2 = 'context-test-2';
+
+  // Setup: Create two tenant schemas
+  try {
+    await tenantService.deleteTenantSchema(tenant1);
+    await tenantService.deleteTenantSchema(tenant2);
+  } catch (error) {
+    // Ignore
+  }
+
+  await tenantService.createTenantSchema({ tenantId: tenant1 });
+  await tenantService.createTenantSchema({ tenantId: tenant2 });
+
+  // Create sample users table in both tenant schemas
+  await tenantService.setTenantContext(tenant1);
+  await app.db.raw(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL
+    )
+  `);
+
+  await tenantService.setTenantContext(tenant2);
+  await app.db.raw(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL
+    )
+  `);
+
+  await t.test('should isolate data between tenants', async (t) => {
+    // Insert user in tenant1
+    await tenantService.setTenantContext(tenant1);
+    await app.db('users').insert({
+      name: 'Alice',
+      email: 'alice@tenant1.com',
+    });
+
+    // Insert user in tenant2
+    await tenantService.setTenantContext(tenant2);
+    await app.db('users').insert({
+      name: 'Bob',
+      email: 'bob@tenant2.com',
+    });
+
+    // Query tenant1 - should only see Alice
+    await tenantService.setTenantContext(tenant1);
+    const tenant1Users = await app.db('users').select('*');
+    t.equal(tenant1Users.length, 1, 'Tenant 1 should have 1 user');
+    t.equal(tenant1Users[0].name, 'Alice', 'Tenant 1 should only see Alice');
+
+    // Query tenant2 - should only see Bob
+    await tenantService.setTenantContext(tenant2);
+    const tenant2Users = await app.db('users').select('*');
+    t.equal(tenant2Users.length, 1, 'Tenant 2 should have 1 user');
+    t.equal(tenant2Users[0].name, 'Bob', 'Tenant 2 should only see Bob');
+  });
+
+  await t.test('should verify search_path is set correctly', async (t) => {
+    await tenantService.setTenantContext(tenant1);
+    const result1 = await app.db.raw('SHOW search_path');
+    t.ok(result1.rows[0].search_path.includes('tenant_context-test-1'), 'Should set search_path for tenant1');
+
+    await tenantService.setTenantContext(tenant2);
+    const result2 = await app.db.raw('SHOW search_path');
+    t.ok(result2.rows[0].search_path.includes('tenant_context-test-2'), 'Should set search_path for tenant2');
+  });
+
+  // Cleanup
+  await tenantService.deleteTenantSchema(tenant1);
+  await tenantService.deleteTenantSchema(tenant2);
+  await app.close();
+});
+
+test('Tenant Middleware with JWT', async (t) => {
+  const app = await buildApp({ logger: false });
+  const tenantService = new TenantService(app.db);
+
+  const tenantId = 'jwt-test-tenant';
+
+  // Setup
+  try {
+    await tenantService.deleteTenantSchema(tenantId);
+  } catch (error) {
+    // Ignore
+  }
+
+  await tenantService.createTenantSchema({ tenantId });
+
+  await t.test('should reject requests without tenant schema', async (t) => {
+    const nonExistentTenant = 'non-existent-tenant';
+
+    // Create JWT token with non-existent tenant
+    const token = app.jwt.sign({
+      id: 'user-123',
+      email: 'test@example.com',
+      tenantId: nonExistentTenant,
+    });
+
+    // Make request with token
+    const response = await app.inject({
+      method: 'GET',
+      url: '/users',
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    t.equal(response.statusCode, 403, 'Should return 403 Forbidden');
+    const body = JSON.parse(response.body);
+    t.ok(body.message.includes('Tenant schema not found'), 'Should mention tenant schema not found');
+  });
+
+  await t.test('should allow requests with valid tenant', async (t) => {
+    // Create JWT token with valid tenant
+    const token = app.jwt.sign({
+      id: 'user-123',
+      email: 'test@example.com',
+      tenantId,
+    });
+
+    // Make request with token to health endpoint (should work without tenant context)
+    const response = await app.inject({
+      method: 'GET',
+      url: '/health',
+      headers: {
+        authorization: `Bearer ${token}`,
+      },
+    });
+
+    t.equal(response.statusCode, 200, 'Should return 200 OK for health check');
+  });
+
+  // Cleanup
+  await tenantService.deleteTenantSchema(tenantId);
+  await app.close();
+});
+
+test('Tenant Isolation - Security Test', async (t) => {
+  const app = await buildApp({ logger: false });
+  const tenantService = new TenantService(app.db);
+
+  const attacker = 'attacker-tenant';
+  const victim = 'victim-tenant';
+
+  // Setup
+  try {
+    await tenantService.deleteTenantSchema(attacker);
+    await tenantService.deleteTenantSchema(victim);
+  } catch (error) {
+    // Ignore
+  }
+
+  await tenantService.createTenantSchema({ tenantId: attacker });
+  await tenantService.createTenantSchema({ tenantId: victim });
+
+  // Create users table in both tenants
+  await tenantService.setTenantContext(victim);
+  await app.db.raw(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      sensitive_data TEXT
+    )
+  `);
+
+  await tenantService.setTenantContext(attacker);
+  await app.db.raw(`
+    CREATE TABLE IF NOT EXISTS users (
+      id SERIAL PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      email VARCHAR(255) UNIQUE NOT NULL,
+      sensitive_data TEXT
+    )
+  `);
+
+  await t.test('should prevent cross-tenant data access', async (t) => {
+    // Insert sensitive data in victim tenant
+    await tenantService.setTenantContext(victim);
+    await app.db('users').insert({
+      name: 'Victim User',
+      email: 'victim@example.com',
+      sensitive_data: 'SECRET_DATA_12345',
+    });
+
+    // Switch to attacker tenant
+    await tenantService.setTenantContext(attacker);
+
+    // Attempt to query users (should not see victim's data)
+    const attackerUsers = await app.db('users').select('*');
+    t.equal(attackerUsers.length, 0, 'Attacker should not see victim data');
+
+    // Verify victim's data is still there
+    await tenantService.setTenantContext(victim);
+    const victimUsers = await app.db('users').select('*');
+    t.equal(victimUsers.length, 1, 'Victim data should still exist');
+    t.equal(victimUsers[0].sensitive_data, 'SECRET_DATA_12345', 'Sensitive data should be intact');
+  });
+
+  // Cleanup
+  await tenantService.deleteTenantSchema(attacker);
+  await tenantService.deleteTenantSchema(victim);
+  await app.close();
+});
+{{else}}// SQLite tests would go here
+// For SQLite, multi-tenancy uses row-level filtering instead of schemas
+
+import { test } from 'tap';
+
+test.skip('SQLite multi-tenancy tests not implemented yet', (t) => {
+  t.pass('Placeholder for SQLite tenant tests');
+  t.end();
+});
+{{/if}}

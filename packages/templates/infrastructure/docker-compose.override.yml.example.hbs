@@ -1,0 +1,60 @@
+# Docker Compose Override Example
+# Copy this file to docker-compose.override.yml to customize your local setup
+# docker-compose.override.yml is automatically loaded and overrides docker-compose.yml
+
+version: '3.8'
+
+services:
+{{#each services}}
+  {{this.name}}:
+    # Enable development mode with hot reload
+    command: pnpm dev
+
+    # Additional environment variables for development
+    environment:
+      NODE_ENV: development
+      DEBUG: {{../project.name}}:*
+
+    # Mount source code for hot reload
+    volumes:
+      - ./services/{{this.name}}/src:/app/src
+      - ./services/{{this.name}}/test:/app/test
+
+    # Expose debugger port
+    ports:
+      - "{{this.port}}:{{this.port}}"
+      - "{{add this.port 9000}}:9229"  # Node debugger
+
+{{/each}}
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+  postgres:
+    # Expose PostgreSQL port for external tools (TablePlus, pgAdmin, etc.)
+    ports:
+      - "5432:5432"
+
+    # Enable query logging for development
+    command: >
+      postgres
+      -c log_statement=all
+      -c log_destination=stderr
+      -c logging_collector=on
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.cache}}
+  redis:
+    # Expose Redis port for external tools (RedisInsight, etc.)
+    ports:
+      - "6379:6379"
+{{/if}}
+
+{{#if infrastructure.messageQueue}}
+  nats:
+    # Expose NATS ports for external clients
+    ports:
+      - "4222:4222"  # Client
+      - "8222:8222"  # HTTP Monitoring
+      - "6222:6222"  # Cluster (if needed)
+{{/if}}

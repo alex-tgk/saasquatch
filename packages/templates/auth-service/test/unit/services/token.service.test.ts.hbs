@@ -1,0 +1,417 @@
+import { describe, it, expect, beforeEach, afterEach, jest } from '@jest/globals';
+import Fastify, { FastifyInstance } from 'fastify';
+import jwt from '@fastify/jwt';
+import Redis from 'ioredis-mock';
+import { TokenService } from '../../../src/services/token.service';
+
+describe('TokenService', () => {
+  let fastify: FastifyInstance;
+  let redis: Redis;
+  let tokenService: TokenService;
+
+  const mockUserId = 'user-123';
+  const mockEmail = 'test@example.com';
+  const mockTenantId = 'tenant-456';
+
+  beforeEach(async () => {
+    // Setup Fastify with JWT plugin
+    fastify = Fastify({ logger: false });
+    await fastify.register(jwt, {
+      secret: 'test-secret-key',
+    });
+
+    // Setup Redis mock
+    redis = new Redis();
+
+    // Initialize TokenService
+    tokenService = new TokenService(fastify, redis);
+  });
+
+  afterEach(async () => {
+    await fastify.close();
+    await redis.quit();
+  });
+
+  describe('generateAccessToken', () => {
+    it('should generate a valid access token with userId and email', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      expect(token).toBeDefined();
+      expect(typeof token).toBe('string');
+
+      // Verify token structure
+      const decoded = fastify.jwt.verify(token) as any;
+      expect(decoded.userId).toBe(mockUserId);
+      expect(decoded.email).toBe(mockEmail);
+      expect(decoded.type).toBe('access');
+    });
+
+    it('should generate access token with tenantId when provided', async () => {
+      const token = await tokenService.generateAccessToken(
+        mockUserId,
+        mockEmail,
+        mockTenantId
+      );
+
+      const decoded = fastify.jwt.verify(token) as any;
+      expect(decoded.tenantId).toBe(mockTenantId);
+    });
+
+    it('should generate access token with 15-minute expiry', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      const decoded = fastify.jwt.verify(token) as any;
+      expect(decoded.exp).toBeDefined();
+
+      // Check expiry is approximately 15 minutes from now
+      const now = Math.floor(Date.now() / 1000);
+      const expectedExpiry = now + 15 * 60; // 15 minutes
+      expect(decoded.exp).toBeGreaterThan(now);
+      expect(decoded.exp).toBeLessThanOrEqual(expectedExpiry + 5); // 5 second buffer
+    });
+
+    it('should throw error when token generation fails', async () => {
+      // Mock jwt.sign to throw error
+      const originalSign = fastify.jwt.sign;
+      fastify.jwt.sign = jest.fn(() => {
+        throw new Error('JWT signing failed');
+      }) as any;
+
+      await expect(
+        tokenService.generateAccessToken(mockUserId, mockEmail)
+      ).rejects.toThrow('Failed to generate access token');
+
+      // Restore original
+      fastify.jwt.sign = originalSign;
+    });
+  });
+
+  describe('generateRefreshToken', () => {
+    it('should generate a valid refresh token with userId', async () => {
+      const token = await tokenService.generateRefreshToken(mockUserId);
+
+      expect(token).toBeDefined();
+      expect(typeof token).toBe('string');
+
+      // Verify token structure
+      const decoded = fastify.jwt.verify(token) as any;
+      expect(decoded.userId).toBe(mockUserId);
+      expect(decoded.type).toBe('refresh');
+    });
+
+    it('should generate refresh token with 7-day expiry', async () => {
+      const token = await tokenService.generateRefreshToken(mockUserId);
+
+      const decoded = fastify.jwt.verify(token) as any;
+      expect(decoded.exp).toBeDefined();
+
+      // Check expiry is approximately 7 days from now
+      const now = Math.floor(Date.now() / 1000);
+      const expectedExpiry = now + 7 * 24 * 60 * 60; // 7 days
+      expect(decoded.exp).toBeGreaterThan(now);
+      expect(decoded.exp).toBeLessThanOrEqual(expectedExpiry + 5);
+    });
+
+    it('should throw error when token generation fails', async () => {
+      const originalSign = fastify.jwt.sign;
+      fastify.jwt.sign = jest.fn(() => {
+        throw new Error('JWT signing failed');
+      }) as any;
+
+      await expect(
+        tokenService.generateRefreshToken(mockUserId)
+      ).rejects.toThrow('Failed to generate refresh token');
+
+      fastify.jwt.sign = originalSign;
+    });
+  });
+
+  describe('verifyToken', () => {
+    it('should verify a valid access token', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      const decoded = await tokenService.verifyToken(token);
+
+      expect(decoded.userId).toBe(mockUserId);
+      expect(decoded.email).toBe(mockEmail);
+      expect((decoded as any).type).toBe('access');
+    });
+
+    it('should verify a valid refresh token', async () => {
+      const token = await tokenService.generateRefreshToken(mockUserId);
+
+      const decoded = await tokenService.verifyToken(token);
+
+      expect(decoded.userId).toBe(mockUserId);
+      expect((decoded as any).type).toBe('refresh');
+    });
+
+    it('should reject expired token', async () => {
+      // Generate token with immediate expiry
+      const token = fastify.jwt.sign(
+        { userId: mockUserId, email: mockEmail, type: 'access' },
+        { expiresIn: '0s' }
+      );
+
+      // Wait a moment to ensure expiry
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await expect(tokenService.verifyToken(token)).rejects.toThrow(
+        'Token has expired'
+      );
+    });
+
+    it('should reject invalid token signature', async () => {
+      const invalidToken = 'invalid.token.signature';
+
+      await expect(tokenService.verifyToken(invalidToken)).rejects.toThrow(
+        'Invalid token'
+      );
+    });
+
+    it('should reject blacklisted token', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      // Blacklist the token
+      await tokenService.revokeToken(token);
+
+      await expect(tokenService.verifyToken(token)).rejects.toThrow(
+        'Token has been revoked'
+      );
+    });
+  });
+
+  describe('revokeToken', () => {
+    it('should add token to Redis blacklist', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      await tokenService.revokeToken(token);
+
+      // Verify token is in blacklist
+      const isRevoked = await tokenService.isTokenRevoked(token);
+      expect(isRevoked).toBe(true);
+    });
+
+    it('should set Redis TTL to match token expiry', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      await tokenService.revokeToken(token);
+
+      // Get TTL from Redis
+      const decoded = fastify.jwt.decode(token) as any;
+      const key = `token:blacklist:${token}`;
+      const ttl = await redis.ttl(key);
+
+      // TTL should be approximately 15 minutes (900 seconds)
+      expect(ttl).toBeGreaterThan(0);
+      expect(ttl).toBeLessThanOrEqual(900);
+    });
+
+    it('should not blacklist already expired token', async () => {
+      const token = fastify.jwt.sign(
+        { userId: mockUserId, email: mockEmail, type: 'access' },
+        { expiresIn: '-1s' } // Already expired
+      );
+
+      await tokenService.revokeToken(token);
+
+      // Should not be in blacklist since it's already expired
+      const key = `token:blacklist:${token}`;
+      const exists = await redis.exists(key);
+      expect(exists).toBe(0);
+    });
+
+    it('should throw error for invalid token format', async () => {
+      const invalidToken = 'not.a.valid.token';
+
+      await expect(tokenService.revokeToken(invalidToken)).rejects.toThrow(
+        'Failed to revoke token'
+      );
+    });
+  });
+
+  describe('isTokenRevoked', () => {
+    it('should return false for non-blacklisted token', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      const isRevoked = await tokenService.isTokenRevoked(token);
+      expect(isRevoked).toBe(false);
+    });
+
+    it('should return true for blacklisted token', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+      await tokenService.revokeToken(token);
+
+      const isRevoked = await tokenService.isTokenRevoked(token);
+      expect(isRevoked).toBe(true);
+    });
+
+    it('should return false when Redis check fails (fail-open)', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      // Mock Redis to throw error
+      const originalExists = redis.exists.bind(redis);
+      redis.exists = jest.fn(() => {
+        throw new Error('Redis connection failed');
+      }) as any;
+
+      const isRevoked = await tokenService.isTokenRevoked(token);
+      expect(isRevoked).toBe(false); // Fail-open behavior
+
+      // Restore original
+      redis.exists = originalExists;
+    });
+  });
+
+  describe('generateTokenPair', () => {
+    it('should generate both access and refresh tokens', async () => {
+      const tokens = await tokenService.generateTokenPair(
+        mockUserId,
+        mockEmail,
+        mockTenantId
+      );
+
+      expect(tokens.accessToken).toBeDefined();
+      expect(tokens.refreshToken).toBeDefined();
+
+      // Verify access token
+      const accessDecoded = fastify.jwt.verify(tokens.accessToken) as any;
+      expect(accessDecoded.type).toBe('access');
+      expect(accessDecoded.userId).toBe(mockUserId);
+      expect(accessDecoded.email).toBe(mockEmail);
+      expect(accessDecoded.tenantId).toBe(mockTenantId);
+
+      // Verify refresh token
+      const refreshDecoded = fastify.jwt.verify(tokens.refreshToken) as any;
+      expect(refreshDecoded.type).toBe('refresh');
+      expect(refreshDecoded.userId).toBe(mockUserId);
+    });
+
+    it('should generate tokens without tenantId when not provided', async () => {
+      const tokens = await tokenService.generateTokenPair(mockUserId, mockEmail);
+
+      const accessDecoded = fastify.jwt.verify(tokens.accessToken) as any;
+      expect(accessDecoded.tenantId).toBeUndefined();
+    });
+  });
+
+  describe('refreshAccessToken', () => {
+    it('should generate new access token from valid refresh token', async () => {
+      const refreshToken = await tokenService.generateRefreshToken(mockUserId);
+
+      const newAccessToken = await tokenService.refreshAccessToken(
+        refreshToken,
+        mockEmail,
+        mockTenantId
+      );
+
+      expect(newAccessToken).toBeDefined();
+
+      // Verify new access token
+      const decoded = fastify.jwt.verify(newAccessToken) as any;
+      expect(decoded.type).toBe('access');
+      expect(decoded.userId).toBe(mockUserId);
+      expect(decoded.email).toBe(mockEmail);
+      expect(decoded.tenantId).toBe(mockTenantId);
+    });
+
+    it('should reject refresh with invalid token type', async () => {
+      // Use access token instead of refresh token
+      const accessToken = await tokenService.generateAccessToken(
+        mockUserId,
+        mockEmail
+      );
+
+      await expect(
+        tokenService.refreshAccessToken(accessToken, mockEmail)
+      ).rejects.toThrow('Invalid token type');
+    });
+
+    it('should reject refresh with revoked token', async () => {
+      const refreshToken = await tokenService.generateRefreshToken(mockUserId);
+      await tokenService.revokeToken(refreshToken);
+
+      await expect(
+        tokenService.refreshAccessToken(refreshToken, mockEmail)
+      ).rejects.toThrow('Token has been revoked');
+    });
+
+    it('should reject refresh with expired token', async () => {
+      const expiredRefreshToken = fastify.jwt.sign(
+        { userId: mockUserId, type: 'refresh' },
+        { expiresIn: '0s' }
+      );
+
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await expect(
+        tokenService.refreshAccessToken(expiredRefreshToken, mockEmail)
+      ).rejects.toThrow();
+    });
+  });
+
+  describe('Error Handling', () => {
+    it('should handle concurrent token operations', async () => {
+      const operations = Array.from({ length: 10 }, (_, i) =>
+        tokenService.generateAccessToken(`user-${i}`, `user${i}@example.com`)
+      );
+
+      const tokens = await Promise.all(operations);
+
+      expect(tokens).toHaveLength(10);
+      tokens.forEach((token, i) => {
+        const decoded = fastify.jwt.verify(token) as any;
+        expect(decoded.userId).toBe(`user-${i}`);
+        expect(decoded.email).toBe(`user${i}@example.com`);
+      });
+    });
+
+    it('should handle Redis blacklist cleanup on token expiry', async () => {
+      // Generate token with short expiry
+      const shortToken = fastify.jwt.sign(
+        { userId: mockUserId, email: mockEmail, type: 'access' },
+        { expiresIn: '2s' }
+      );
+
+      await tokenService.revokeToken(shortToken);
+
+      // Verify it's blacklisted
+      let isRevoked = await tokenService.isTokenRevoked(shortToken);
+      expect(isRevoked).toBe(true);
+
+      // Wait for Redis TTL to expire (slightly longer than token expiry)
+      await new Promise((resolve) => setTimeout(resolve, 2500));
+
+      // Should no longer be in blacklist
+      isRevoked = await tokenService.isTokenRevoked(shortToken);
+      expect(isRevoked).toBe(false);
+    });
+  });
+
+  describe('Integration with Fastify decorators', () => {
+    it('should use Fastify logger for operations', async () => {
+      const loggerSpy = jest.spyOn(fastify.log, 'info');
+
+      await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      expect(loggerSpy).toHaveBeenCalled();
+    });
+
+    it('should use Fastify JWT sign method', async () => {
+      const signSpy = jest.spyOn(fastify.jwt, 'sign');
+
+      await tokenService.generateAccessToken(mockUserId, mockEmail);
+
+      expect(signSpy).toHaveBeenCalled();
+    });
+
+    it('should use Fastify JWT verify method', async () => {
+      const token = await tokenService.generateAccessToken(mockUserId, mockEmail);
+      const verifySpy = jest.spyOn(fastify.jwt, 'verify');
+
+      await tokenService.verifyToken(token);
+
+      expect(verifySpy).toHaveBeenCalled();
+    });
+  });
+});
