@@ -23,7 +23,7 @@ export interface ProjectAnswers {
 }
 
 export async function promptProjectConfig(): Promise<Partial<Config>> {
-  console.log(chalk.cyan('\n🚀 SaaSaaS Project Configuration\n'));
+  console.log(chalk.cyan('\n🚀 SaaSQuatch Project Configuration\n'));
 
   const answers = await inquirer.prompt<ProjectAnswers>([
     {

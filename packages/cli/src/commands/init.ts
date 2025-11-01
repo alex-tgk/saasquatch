@@ -20,7 +20,7 @@ export function createInitCommand(): Command {
     .option('-c, --config <path>', 'Path to configuration file')
     .option('--dry-run', 'Preview what would be generated without creating files')
     .action(async (projectName?: string, options?: any) => {
-      console.log(chalk.bold.blue('\n🚀 SaaSaaS Project Generator\n'));
+      console.log(chalk.bold.blue('\n🚀 SaaSQuatch Project Generator\n'));
       console.log(chalk.gray('Generate production-ready Fastify microservices\n'));
 
       let config: Config;

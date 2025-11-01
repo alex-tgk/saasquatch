@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "description": "CLI tool for generating production-ready Fastify microservices",
-  "author": "SaaSaaS Team",
+  "author": "SaaSQuatch Team",
   "license": "MIT",
   "bin": {
     "saasquatch": "./dist/cli.js"

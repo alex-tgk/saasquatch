@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**SaaSaaS** (SaaS-as-a-Service) is a production-ready CLI tool that generates complete microservices architectures using Fastify, PostgreSQL/SQLite, Redis, and NATS.
+**SaaSQuatch** is a production-ready CLI tool that generates complete microservices architectures using Fastify, PostgreSQL/SQLite, Redis, and NATS.
 
 **Current Status**: Phase 1 - Planning Complete, Ready for Implementation (Week 1: CLI Foundation)
 
