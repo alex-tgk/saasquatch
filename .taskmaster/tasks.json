@@ -670,13 +670,41 @@
       ],
       "startedAt": null,
       "completedAt": null
+    },
+    {
+      "id": "TASK-031",
+      "title": "Create web UI and service monitor dashboard",
+      "description": "Build a Next.js web dashboard for monitoring and managing generated microservices in real-time",
+      "status": "pending",
+      "priority": "high",
+      "phase": 3,
+      "complexity": "L",
+      "estimatedHours": 8,
+      "actualHours": null,
+      "tags": ["ui", "monitoring", "dashboard", "nextjs", "week3"],
+      "dependencies": ["TASK-019"],
+      "acceptanceCriteria": [
+        "Next.js dashboard service generated with project",
+        "Real-time service health monitoring",
+        "Service logs viewer with filtering",
+        "NATS message queue inspector",
+        "Redis cache viewer and management",
+        "Database connection status",
+        "Service start/stop/restart controls",
+        "API endpoint testing interface",
+        "Metrics visualization (CPU, memory, requests)",
+        "Responsive design with Tailwind CSS"
+      ],
+      "implementationNotes": "Use Next.js 14 with App Router, React Server Components, and real-time updates via WebSockets or Server-Sent Events. Dashboard should run on port 3100 by default. Integrate with existing Fastify services via health check endpoints and add monitoring endpoints to each service.",
+      "startedAt": null,
+      "completedAt": null
     }
   ],
   "metadata": {
-    "totalTasks": 30,
+    "totalTasks": 31,
     "completedTasks": 7,
     "inProgressTasks": 0,
-    "pendingTasks": 23,
+    "pendingTasks": 24,
     "blockedTasks": 0,
     "byPhase": {
       "1": 8,
@@ -696,8 +724,8 @@
       "medium": 6,
       "low": 0
     },
-    "totalEstimatedHours": 128.5,
+    "totalEstimatedHours": 136.5,
     "totalActualHours": 19.5,
-    "completionPercentage": 23.33
+    "completionPercentage": 22.58
   }
 }
