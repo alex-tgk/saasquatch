@@ -1,0 +1,281 @@
+# Test Coverage Summary
+
+## Overview
+
+Comprehensive test suite for {{service.name}} with 80%+ coverage target.
+
+## Test Files
+
+### Authentication Tests (`routes/auth.test.ts`)
+
+**Total Test Cases: 45+**
+
+#### POST /auth/register (9 tests)
+- ✓ Successfully registers new user
+- ✓ Returns valid JWT tokens
+- ✓ Hashes password (not stored in plain text)
+- ✗ Rejects duplicate email addresses
+- ✗ Rejects invalid email format
+- ✗ Rejects weak passwords (< 8 characters)
+- ✗ Rejects missing required fields (email, password, name)
+- ✗ Rejects name that is too short (< 2 characters)
+
+#### POST /auth/login (8 tests)
+- ✓ Successfully logs in with valid credentials
+- ✓ Returns valid JWT tokens on login
+- ✓ Updates last_login_at timestamp
+- ✗ Rejects login with invalid email
+- ✗ Rejects login with invalid password
+- ✗ Rejects login for non-existent user
+- ✗ Rejects login with missing email
+- ✗ Rejects login with missing password
+
+#### POST /auth/refresh (6 tests)
+- ✓ Successfully refreshes token with valid refresh token
+- ✓ Returns new access token
+- ✓ Implements token rotation (new refresh token)
+- ✗ Rejects invalid refresh token
+- ✗ Rejects expired refresh token
+- ✗ Rejects blacklisted refresh token
+- ✗ Rejects missing refresh token
+
+#### POST /auth/logout (4 tests)
+- ✓ Successfully logs out user
+- ✓ Blacklists token in Redis
+- ✗ Rejects logout with invalid token
+- ✗ Rejects logout with missing Authorization header
+- ✗ Rejects already logged out token
+
+#### GET /auth/me (6 tests)
+- ✓ Returns current user profile
+- ✓ Excludes password_hash from response
+- ✗ Rejects request with missing Authorization header
+- ✗ Rejects request with invalid token
+- ✗ Rejects request with blacklisted token
+- ✗ Rejects expired access token
+
+#### Integration Tests (4 tests)
+- ✓ Complete registration → login → refresh → logout flow
+- ✓ Concurrent login attempts for same user
+- ✓ Token expiry scenario
+- ✓ User session maintenance across multiple requests
+
+{{#if service.features.healthChecks}}### Health Check Tests (`routes/health.test.ts`)
+
+**Total Test Cases: 7+**
+
+#### GET /health (3 tests)
+- ✓ Returns 200 and healthy status
+- ✓ Returns valid timestamp
+- ✓ Returns uptime in seconds
+
+#### GET /ready (4+ tests)
+- ✓ Returns 200 and ready status
+- ✓ Includes dependency checks
+{{#if service.features.database}}- ✓ Checks database connectivity
+{{/if}}{{#if service.features.cache}}- ✓ Checks Redis connectivity
+{{/if}}{{#if service.features.messageQueue}}- ✓ Checks NATS connectivity
+{{/if}}
+{{/if}}
+
+## Test Utilities
+
+### Helper Functions (`helpers/test-helpers.ts`)
+
+#### Environment Management
+- `setupTestEnvironment()` - Creates test app with all plugins
+- `teardownTestEnvironment()` - Closes all connections
+- `createTestApp()` - Creates Fastify app instance
+
+{{#if service.features.database}}#### Database Management
+- `setupTestDatabase()` - Creates database schema
+- `cleanTestDatabase()` - Removes all data
+- `teardownTestDatabase()` - Drops all tables
+{{/if}}
+
+{{#if service.features.jwt}}#### Authentication Helpers
+- `createTestUser()` - Creates user with hashed password
+- `loginTestUser()` - Logs in and returns tokens
+- `createAuthHeader()` - Creates Bearer token header
+- `extractTokenFromHeader()` - Extracts token from header
+{{/if}}
+
+#### Utility Functions
+- `wait(ms)` - Async delay
+- `generateRandomEmail()` - Unique test emails
+- `generateRandomName()` - Random test names
+
+### Test Fixtures (`fixtures/users.ts`)
+
+#### Valid Users
+- `validUsers.user1` - Standard test user
+- `validUsers.user2` - Alternative test user
+- `validUsers.user3` - Third test user
+- `getValidUser(key)` - Retrieve valid user by key
+
+#### Invalid Users
+- `invalidUsers.invalidEmail` - Malformed email
+- `invalidUsers.weakPassword` - Password too short
+- `invalidUsers.missingEmail` - Empty email
+- `invalidUsers.missingPassword` - Empty password
+- `invalidUsers.missingName` - Empty name
+- `invalidUsers.shortName` - Name too short
+- `getInvalidUser(key)` - Retrieve invalid user by key
+
+## Coverage Metrics
+
+### Target Thresholds (Jest Config)
+```javascript
+coverageThreshold: {
+  global: {
+    branches: 80,
+    functions: 80,
+    lines: 80,
+    statements: 80,
+  },
+}
+```
+
+### Files Covered
+- `src/routes/auth.ts` - All authentication endpoints
+- `src/routes/health.ts` - Health check endpoints
+- `src/plugins/auth.ts` - JWT authentication plugin
+- `src/plugins/database.ts` - Database connection plugin
+- `src/plugins/redis.ts` - Redis connection plugin
+- `src/plugins/nats.ts` - NATS connection plugin
+- `src/app.ts` - Application bootstrap
+
+## Test Categories
+
+### Unit Tests
+- Route handlers
+- Schema validation
+- Plugin functionality
+- Helper functions
+
+### Integration Tests
+- Complete authentication flows
+- Multi-step user journeys
+- Concurrent operations
+- Token lifecycle management
+
+### Security Tests
+- Password hashing verification
+- JWT token validation
+- Token blacklisting
+- Authorization header validation
+- Input validation
+- SQL injection prevention (via Knex parameterized queries)
+
+### Error Handling Tests
+- Invalid input rejection
+- Missing field validation
+- Duplicate data handling
+- Authentication failures
+- Authorization failures
+- Expired token handling
+
+## Running Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run with coverage
+pnpm test:coverage
+
+# Watch mode
+pnpm test:watch
+
+# Run specific file
+pnpm test auth.test.ts
+
+# Run tests matching pattern
+pnpm test --testNamePattern="register"
+```
+
+## Coverage Report
+
+After running `pnpm test:coverage`, view the report:
+
+```bash
+# Terminal output
+cat coverage/coverage-summary.json
+
+# HTML report
+open coverage/lcov-report/index.html
+
+# LCOV format (for CI tools)
+cat coverage/lcov.info
+```
+
+## CI/CD Integration
+
+Tests are designed for CI environments:
+
+- **Isolation**: Each test is independent
+- **Fast Execution**: In-memory databases for speed
+- **No Manual Setup**: Automated database creation
+- **Parallel Execution**: Tests can run in parallel
+- **Deterministic**: No flaky tests from timing issues
+
+### Environment Variables
+
+{{#if service.features.database}}```bash
+{{#if (eq infrastructure.database.type "postgresql")}}TEST_DATABASE_URL=postgresql://test:test@localhost:5432/{{service.name}}_test
+{{/if}}{{#if (eq infrastructure.database.type "sqlite")}}DATABASE_URL=:memory:
+{{/if}}{{/if}}{{#if service.features.cache}}TEST_REDIS_URL=redis://localhost:6379/15
+{{/if}}{{#if service.features.messageQueue}}TEST_NATS_URL=nats://localhost:4222
+{{/if}}NODE_ENV=test
+LOG_LEVEL=silent
+```
+
+## Best Practices Followed
+
+1. **AAA Pattern**: Arrange, Act, Assert
+2. **Test Isolation**: Independent tests with clean state
+3. **Descriptive Names**: Clear test descriptions
+4. **Edge Cases**: Both success and failure scenarios
+5. **Security Focus**: Password hashing, token validation
+6. **Performance**: Fast tests with in-memory databases
+7. **Coverage**: 80%+ across all metrics
+8. **Documentation**: Comprehensive inline comments
+9. **Maintainability**: Shared helpers and fixtures
+10. **CI/CD Ready**: No manual setup required
+
+## Future Enhancements
+
+- [ ] Add load/stress testing
+- [ ] Add mutation testing
+- [ ] Add contract testing for APIs
+- [ ] Add visual regression testing for UIs
+- [ ] Add security scanning (OWASP)
+- [ ] Add performance benchmarking
+- [ ] Add E2E testing with Playwright
+- [ ] Add snapshot testing for responses
+
+## Maintenance
+
+### Adding New Tests
+
+1. Create test file in appropriate directory
+2. Import helpers from `test/helpers/test-helpers.ts`
+3. Follow AAA pattern
+4. Add descriptive test names
+5. Update this coverage document
+6. Run coverage to ensure 80%+ threshold
+
+### Updating Test Helpers
+
+1. Add new helper to `test/helpers/test-helpers.ts`
+2. Export the function
+3. Document in `test/README.md`
+4. Update this coverage document
+5. Add tests for the helper itself
+
+### Managing Test Data
+
+1. Add fixtures to `test/fixtures/`
+2. Use fixtures in tests via import
+3. Keep fixtures realistic but minimal
+4. Document fixture structure

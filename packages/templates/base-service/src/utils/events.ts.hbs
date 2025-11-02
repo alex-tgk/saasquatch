@@ -1,0 +1,249 @@
+/**
+ * Authentication Events Utility
+ *
+ * Provides event publishing capabilities for authentication-related actions.
+ * Events are published to NATS JetStream for distributed event-driven architecture.
+ *
+ * @module events
+ *
+ * Features:
+ * - Type-safe event schemas
+ * - Fire-and-forget publishing (non-blocking)
+ * - Graceful error handling (failures don't break auth flows)
+ * - Structured logging with Pino
+ * - JetStream persistence for event replay
+ *
+ * Event Types:
+ * - auth.user.registered - New user registration
+ * - auth.user.logged_in - User login
+ * - auth.user.logged_out - User logout
+ * - auth.user.token_refreshed - Token refresh
+ *
+ * Usage:
+ * ```typescript
+ * import { publishUserRegistered } from './utils/events.js';
+ *
+ * // After successful registration
+ * await publishUserRegistered(
+ *   fastify.nats,
+ *   user.id,
+ *   user.email,
+ *   user.name,
+ *   fastify.log
+ * );
+ * ```
+ *
+ * @see /docs/EVENTS.md for complete documentation
+ */
+
+import { NatsConnection, StringCodec } from 'nats';
+import { FastifyBaseLogger } from 'fastify';
+
+/**
+ * Auth Event Types
+ *
+ * These events are published when authentication-related actions occur.
+ * Other services can subscribe to these events to react to auth changes.
+ */
+
+export enum AuthEventType {
+  USER_REGISTERED = 'auth.user.registered',
+  USER_LOGGED_IN = 'auth.user.logged_in',
+  USER_LOGGED_OUT = 'auth.user.logged_out',
+  USER_TOKEN_REFRESHED = 'auth.user.token_refreshed',
+}
+
+/**
+ * Event Payload Interfaces
+ */
+
+export interface UserRegisteredPayload {
+  userId: string;
+  email: string;
+  name: string;
+  timestamp: string;
+}
+
+export interface UserLoggedInPayload {
+  userId: string;
+  email: string;
+  timestamp: string;
+  ip?: string;
+  userAgent?: string;
+}
+
+export interface UserLoggedOutPayload {
+  userId: string;
+  timestamp: string;
+}
+
+export interface UserTokenRefreshedPayload {
+  userId: string;
+  timestamp: string;
+}
+
+/**
+ * Union type for all event payloads
+ */
+export type AuthEventPayload =
+  | UserRegisteredPayload
+  | UserLoggedInPayload
+  | UserLoggedOutPayload
+  | UserTokenRefreshedPayload;
+
+/**
+ * Complete event structure with metadata
+ */
+export interface AuthEvent<T extends AuthEventPayload = AuthEventPayload> {
+  subject: AuthEventType;
+  data: T;
+  metadata: {
+    service: string;
+    version: string;
+    environment: string;
+  };
+}
+
+/**
+ * Publish an authentication event to NATS
+ *
+ * This is a fire-and-forget operation. Failures are logged but don't break the request flow.
+ * Events are published to the JetStream 'auth-events' stream.
+ *
+ * @param nats - NATS connection instance
+ * @param eventType - Type of auth event to publish
+ * @param payload - Event-specific payload data
+ * @param logger - Fastify logger instance for structured logging
+ *
+ * @example
+ * ```typescript
+ * await publishAuthEvent(
+ *   fastify.nats,
+ *   AuthEventType.USER_REGISTERED,
+ *   { userId: '123', email: 'user@example.com', name: 'John Doe', timestamp: new Date().toISOString() },
+ *   fastify.log
+ * );
+ * ```
+ */
+export async function publishAuthEvent<T extends AuthEventPayload>(
+  nats: NatsConnection,
+  eventType: AuthEventType,
+  payload: T,
+  logger: FastifyBaseLogger
+): Promise<void> {
+  try {
+    // Build complete event with metadata
+    const event: AuthEvent<T> = {
+      subject: eventType,
+      data: payload,
+      metadata: {
+        service: '{{service.name}}',
+        version: process.env.SERVICE_VERSION || '1.0.0',
+        environment: process.env.NODE_ENV || 'development',
+      },
+    };
+
+    // Encode event as JSON
+    const sc = StringCodec();
+    const eventData = sc.encode(JSON.stringify(event));
+
+    // Publish to NATS JetStream
+    // Subject format: auth.user.{action}
+    await nats.publish(eventType, eventData);
+
+    // Log successful event publication
+    logger.info(
+      {
+        event: eventType,
+        userId: (payload as any).userId,
+        timestamp: (payload as any).timestamp,
+      },
+      'Auth event published successfully'
+    );
+  } catch (error) {
+    // Log error but don't throw - events are non-critical
+    // We don't want event failures to break auth operations
+    logger.error(
+      {
+        event: eventType,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        payload,
+      },
+      'Failed to publish auth event'
+    );
+  }
+}
+
+/**
+ * Helper function to publish user registered event
+ */
+export async function publishUserRegistered(
+  nats: NatsConnection,
+  userId: string,
+  email: string,
+  name: string,
+  logger: FastifyBaseLogger
+): Promise<void> {
+  const payload: UserRegisteredPayload = {
+    userId,
+    email,
+    name,
+    timestamp: new Date().toISOString(),
+  };
+
+  await publishAuthEvent(nats, AuthEventType.USER_REGISTERED, payload, logger);
+}
+
+/**
+ * Helper function to publish user logged in event
+ */
+export async function publishUserLoggedIn(
+  nats: NatsConnection,
+  userId: string,
+  email: string,
+  logger: FastifyBaseLogger,
+  ip?: string,
+  userAgent?: string
+): Promise<void> {
+  const payload: UserLoggedInPayload = {
+    userId,
+    email,
+    timestamp: new Date().toISOString(),
+    ip,
+    userAgent,
+  };
+
+  await publishAuthEvent(nats, AuthEventType.USER_LOGGED_IN, payload, logger);
+}
+
+/**
+ * Helper function to publish user logged out event
+ */
+export async function publishUserLoggedOut(
+  nats: NatsConnection,
+  userId: string,
+  logger: FastifyBaseLogger
+): Promise<void> {
+  const payload: UserLoggedOutPayload = {
+    userId,
+    timestamp: new Date().toISOString(),
+  };
+
+  await publishAuthEvent(nats, AuthEventType.USER_LOGGED_OUT, payload, logger);
+}
+
+/**
+ * Helper function to publish user token refreshed event
+ */
+export async function publishUserTokenRefreshed(
+  nats: NatsConnection,
+  userId: string,
+  logger: FastifyBaseLogger
+): Promise<void> {
+  const payload: UserTokenRefreshedPayload = {
+    userId,
+    timestamp: new Date().toISOString(),
+  };
+
+  await publishAuthEvent(nats, AuthEventType.USER_TOKEN_REFRESHED, payload, logger);
+}

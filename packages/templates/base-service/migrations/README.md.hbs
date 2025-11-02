@@ -1,0 +1,454 @@
+# Database Migrations
+
+This directory contains database migrations for {{service.name}}. Migrations are version-controlled database schema changes that allow you to evolve your database schema over time in a controlled, repeatable way.
+
+## Overview
+
+**Database Type**: {{infrastructure.database.type}}{{#if infrastructure.database.multiTenancy}}
+**Multi-Tenancy**: Schema-per-tenant architecture{{/if}}
+
+This service uses [Knex.js](https://knexjs.org/) for database migrations and query building. Migrations are automatically applied when the service starts, unless disabled via the `AUTO_MIGRATE` environment variable.
+
+## Quick Start
+
+### Running Migrations
+
+Migrations run automatically when the service starts. To disable auto-migration:
+
+```bash
+# Disable automatic migrations
+export AUTO_MIGRATE=false
+npm run dev
+
+# Run migrations manually
+npm run migrate:latest
+```
+
+### Creating a New Migration
+
+```bash
+# Create a new migration file
+npm run migrate:make add_users_avatar_field
+
+# This creates: src/migrations/TIMESTAMP_add_users_avatar_field.ts
+```
+
+### Checking Migration Status
+
+```bash
+# See which migrations have been applied
+npm run migrate:status
+
+# List all migrations
+npm run migrate:list
+```
+
+### Rolling Back Migrations
+
+```bash
+# Roll back the last batch of migrations
+npm run migrate:rollback
+
+# CAUTION: This can cause data loss in production!
+```
+
+## Migration File Structure
+
+Each migration file exports two functions:
+
+```typescript
+import { Knex } from 'knex';
+
+// Apply the migration (moving forward)
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.createTable('example', (table) => {
+    table.uuid('id').primary();
+    table.string('name').notNullable();
+    table.timestamp('created_at').defaultTo(knex.fn.now());
+  });
+}
+
+// Undo the migration (rolling back)
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.dropTableIfExists('example');
+}
+```
+
+## Existing Migrations
+
+### 001_create_users_table.ts
+
+Creates the core `users` table with the following schema:
+
+**Fields**:
+- `id` - UUID primary key
+- `email` - Unique email address (indexed)
+- `password_hash` - Bcrypt-hashed password
+- `name` - User full name
+- `is_active` - Account status (soft delete)
+- `email_verified` - Email verification status (indexed)
+- `verification_token` - Email verification token (indexed)
+- `verification_token_expires_at` - Token expiration
+- `last_login_at` - Last successful login timestamp
+- `created_at` - Account creation timestamp (indexed)
+- `updated_at` - Last modification timestamp
+
+**Indexes**:
+- `users_email_idx` - Fast email lookups
+- `users_email_verified_idx` - Filter by verification status
+- `users_is_active_idx` - Filter active users
+- `users_verification_token_idx` - Token validation
+- `users_created_at_idx` - Sort by registration date
+- `users_active_verified_idx` - Compound index for active + verified queries
+
+## Best Practices
+
+### 1. Always Write Both `up` and `down`
+
+Every migration should be reversible. Always implement both functions:
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  // Add your changes
+}
+
+export async function down(knex: Knex): Promise<void> {
+  // Reverse your changes
+}
+```
+
+### 2. Use Transactions for Complex Migrations
+
+Wrap multiple operations in a transaction to ensure atomicity:
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  await knex.transaction(async (trx) => {
+    await trx.schema.createTable('table1', ...);
+    await trx.schema.createTable('table2', ...);
+  });
+}
+```
+
+### 3. Never Modify Existing Migrations
+
+Once a migration has been applied in any environment (dev, staging, production), never modify it. Instead, create a new migration to make changes:
+
+```bash
+# DON'T edit: 001_create_users_table.ts
+# DO create: 002_add_users_avatar_field.ts
+npm run migrate:make add_users_avatar_field
+```
+
+### 4. Add Indexes for Performance
+
+Always add indexes for:
+- Foreign key columns
+- Columns used in WHERE clauses
+- Columns used in JOIN conditions
+- Columns used for sorting (ORDER BY)
+
+```typescript
+table.index('user_id', 'table_user_id_idx');
+table.index(['tenant_id', 'created_at'], 'table_tenant_created_idx');
+```
+
+### 5. Use Comments for Documentation
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+PostgreSQL supports column comments:
+
+```typescript
+table.string('email').notNullable()
+  .comment('User email address - must be unique');
+```
+{{else}}
+SQLite doesn't support comments in schema, so document in code comments:
+
+```typescript
+// User email address - must be unique
+table.string('email').notNullable();
+```
+{{/if}}
+
+### 6. Handle NULL Values Explicitly
+
+Always specify whether columns can be NULL:
+
+```typescript
+table.string('required_field').notNullable();
+table.string('optional_field').nullable();
+```
+
+### 7. Set Default Values
+
+Provide sensible defaults for columns:
+
+```typescript
+table.boolean('is_active').notNullable().defaultTo(true);
+table.timestamp('created_at').notNullable().defaultTo(knex.fn.now());
+```
+
+## Database-Specific Notes
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+### PostgreSQL
+
+**UUID Generation**:
+```typescript
+table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+```
+
+**JSON Columns**:
+```typescript
+table.jsonb('metadata').defaultTo('{}');
+```
+
+**Array Columns**:
+```typescript
+table.specificType('tags', 'text[]');
+```
+
+**Full-Text Search**:
+```typescript
+// Add tsvector column for full-text search
+table.specificType('search_vector', 'tsvector');
+table.index('search_vector', 'table_search_idx', 'gin');
+```
+
+{{#if infrastructure.database.multiTenancy}}
+### Multi-Tenancy Support
+
+This service uses schema-per-tenant architecture. Each tenant gets their own PostgreSQL schema.
+
+**Running Migrations for All Tenants**:
+```typescript
+import { runAllTenantMigrations } from '../utils/migrate';
+
+// In your code:
+await runAllTenantMigrations(db, logger);
+```
+
+**Creating a New Tenant Schema**:
+```typescript
+import { runTenantMigrations } from '../utils/migrate';
+
+// When onboarding a new tenant:
+await runTenantMigrations(db, tenantId, logger);
+```
+
+**Tenant Migration Strategy**:
+1. New migrations run automatically for all existing tenant schemas
+2. When a new tenant is created, all migrations run for their schema
+3. The `public` schema contains shared/global data only
+{{/if}}
+{{else}}
+### SQLite
+
+**UUID Generation**:
+SQLite doesn't have native UUID support. Generate UUIDs in application code:
+
+```typescript
+import { randomUUID } from 'crypto';
+
+const id = randomUUID();
+```
+
+**Data Directory**:
+The SQLite database file is stored in `./data/{{service.name}}.db` by default. Make sure this directory exists and has proper permissions.
+
+**Testing**:
+Tests use an in-memory database (`:memory:`) for speed. Each test gets a fresh database.
+{{/if}}
+
+## Common Migration Patterns
+
+### Adding a Column
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.string('avatar_url', 500).nullable();
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.dropColumn('avatar_url');
+  });
+}
+```
+
+### Renaming a Column
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.renameColumn('name', 'full_name');
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.renameColumn('full_name', 'name');
+  });
+}
+```
+
+### Adding an Index
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.index('email', 'users_email_idx');
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.dropIndex('email', 'users_email_idx');
+  });
+}
+```
+
+### Creating a Foreign Key
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.createTable('posts', (table) => {
+    table.uuid('id').primary();
+    table.uuid('user_id').notNullable();
+    table.text('content').notNullable();
+
+    // Foreign key constraint
+    table.foreign('user_id')
+      .references('id')
+      .inTable('users')
+      .onDelete('CASCADE');
+
+    // Index for foreign key
+    table.index('user_id', 'posts_user_id_idx');
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.dropTableIfExists('posts');
+}
+```
+
+### Data Migration
+
+```typescript
+export async function up(knex: Knex): Promise<void> {
+  // Add new column
+  await knex.schema.alterTable('users', (table) => {
+    table.string('status', 50).nullable();
+  });
+
+  // Migrate existing data
+  await knex('users')
+    .update({
+      status: knex.raw("CASE WHEN is_active THEN 'active' ELSE 'inactive' END")
+    });
+
+  // Make column required now that data is migrated
+  await knex.schema.alterTable('users', (table) => {
+    table.string('status', 50).notNullable().alter();
+  });
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.alterTable('users', (table) => {
+    table.dropColumn('status');
+  });
+}
+```
+
+## Troubleshooting
+
+### Migration Already Applied
+
+**Error**: `Migration "XXX_migration_name.ts" has already been run`
+
+**Solution**: This migration was already applied. Check `npm run migrate:status`.
+
+### Migration Failed
+
+**Error**: Migration fails during startup
+
+**Solution**:
+1. Check error logs for specific SQL error
+2. Fix the migration file
+3. Roll back: `npm run migrate:rollback`
+4. Apply again: `npm run migrate:latest`
+
+### Missing Migration Table
+
+**Error**: `relation "knex_migrations" does not exist`
+
+**Solution**: The migrations table is created automatically on first run. If deleted, it will be recreated.
+
+### Database Connection Failed
+
+**Error**: Cannot connect to database
+
+**Solution**:
+1. Check `.env` file has correct database credentials
+2. Ensure database server is running
+3. Verify database exists
+{{#if (eq infrastructure.database.type "postgresql")}}
+4. Test connection: `psql -h localhost -U postgres -d {{snakeCase service.name}}`
+{{else}}
+4. Verify write permissions on `./data/` directory
+{{/if}}
+
+## Production Deployment
+
+### Pre-Deployment Checklist
+
+1. Test migrations in staging environment
+2. Create database backup
+3. Review migration for breaking changes
+4. Plan rollback strategy if needed
+
+### Deployment Strategy
+
+**Option 1: Auto-Migration (Default)**
+- Migrations run automatically when service starts
+- Simple but requires database backup before deployment
+
+**Option 2: Manual Migration**
+- Set `AUTO_MIGRATE=false`
+- Run migrations separately: `npm run migrate:latest`
+- More control over timing and failure handling
+
+### Zero-Downtime Migrations
+
+For production systems, follow these practices:
+
+1. **Backward Compatible Changes**: New migrations should work with the old code version
+2. **Multi-Step Deployments**:
+   - Deploy compatible schema changes first
+   - Update application code second
+   - Remove deprecated columns/tables last
+3. **Use Transactions**: Wrap migrations in transactions when possible
+
+## Additional Resources
+
+- [Knex.js Schema Builder](https://knexjs.org/guide/schema-builder.html)
+- [Knex.js Migrations](https://knexjs.org/guide/migrations.html)
+{{#if (eq infrastructure.database.type "postgresql")}}
+- [PostgreSQL Data Types](https://www.postgresql.org/docs/current/datatype.html)
+- [PostgreSQL Indexes](https://www.postgresql.org/docs/current/indexes.html)
+{{else}}
+- [SQLite Data Types](https://www.sqlite.org/datatype3.html)
+- [SQLite Indexes](https://www.sqlite.org/lang_createindex.html)
+{{/if}}
+
+## Support
+
+For issues with migrations, check:
+1. Service logs for detailed error messages
+2. Database logs for SQL errors
+3. Migration files for syntax errors
+4. This README for common patterns and solutions

@@ -1,0 +1,270 @@
+import { Knex } from 'knex';
+
+/**
+ * Migration Utilities
+ *
+ * These utilities handle database migrations for the service, including
+ * multi-tenancy support for PostgreSQL schema-per-tenant architecture.
+ *
+ * Features:
+ * - Auto-run migrations on service startup (optional)
+ * - Multi-tenant migration support (PostgreSQL)
+ * - Transaction-safe migrations
+ * - Detailed logging for debugging
+ */
+
+interface MigrationResult {
+  success: boolean;
+  batch?: number;
+  migrations?: string[];
+  error?: Error;
+}
+
+/**
+ * Run pending migrations for the default schema
+ *
+ * This function runs all pending migrations in the migrations directory.
+ * It's safe to run multiple times - Knex tracks which migrations have
+ * already been applied.
+ *
+ * @param db - Knex database instance
+ * @param logger - Optional Pino logger instance
+ * @returns Migration result with batch number and migration list
+ */
+export async function runMigrations(
+  db: Knex,
+  logger?: any
+): Promise<MigrationResult> {
+  try {
+    const log = logger || console;
+
+    log.info('Starting database migrations...');
+
+    // Run all pending migrations
+    const [batch, migrations] = await db.migrate.latest();
+
+    if (migrations.length === 0) {
+      log.info('No pending migrations - database is up to date');
+      return { success: true, batch, migrations };
+    }
+
+    log.info({
+      msg: 'Migrations completed successfully',
+      batch,
+      count: migrations.length,
+      migrations,
+    });
+
+    return { success: true, batch, migrations };
+  } catch (error) {
+    const log = logger || console;
+    log.error({
+      msg: 'Migration failed',
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+}
+
+{{#if (eq infrastructure.database.type "postgresql")}}
+{{#if infrastructure.database.multiTenancy}}
+/**
+ * Run migrations for a specific tenant schema (PostgreSQL only)
+ *
+ * In a multi-tenant architecture using schema-per-tenant, each tenant
+ * has their own PostgreSQL schema. This function runs migrations for
+ * a specific tenant's schema.
+ *
+ * @param db - Knex database instance
+ * @param tenantId - Tenant identifier
+ * @param logger - Optional Pino logger instance
+ * @returns Migration result
+ */
+export async function runTenantMigrations(
+  db: Knex,
+  tenantId: string,
+  logger?: any
+): Promise<MigrationResult> {
+  const log = logger || console;
+  const schemaName = `tenant_${tenantId}`;
+
+  try {
+    log.info({ tenantId, schema: schemaName }, 'Starting tenant migrations...');
+
+    // Create schema if it doesn't exist
+    await db.raw(`CREATE SCHEMA IF NOT EXISTS ${schemaName}`);
+
+    // Set search path to tenant schema
+    await db.raw(`SET search_path TO ${schemaName}, public`);
+
+    // Run migrations in tenant schema
+    const [batch, migrations] = await db.migrate.latest();
+
+    if (migrations.length === 0) {
+      log.info({ tenantId, schema: schemaName }, 'No pending tenant migrations');
+      return { success: true, batch, migrations };
+    }
+
+    log.info({
+      msg: 'Tenant migrations completed',
+      tenantId,
+      schema: schemaName,
+      batch,
+      count: migrations.length,
+      migrations,
+    });
+
+    // Reset search path to default
+    await db.raw('SET search_path TO public');
+
+    return { success: true, batch, migrations };
+  } catch (error) {
+    log.error({
+      msg: 'Tenant migration failed',
+      tenantId,
+      schema: schemaName,
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    // Try to reset search path even on error
+    try {
+      await db.raw('SET search_path TO public');
+    } catch {
+      // Ignore errors during cleanup
+    }
+
+    return {
+      success: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+}
+
+/**
+ * Run migrations for all existing tenant schemas
+ *
+ * This utility function runs migrations for all tenant schemas that
+ * currently exist in the database. Useful for upgrading all tenants
+ * when deploying new migrations.
+ *
+ * @param db - Knex database instance
+ * @param logger - Optional Pino logger instance
+ * @returns Array of migration results for each tenant
+ */
+export async function runAllTenantMigrations(
+  db: Knex,
+  logger?: any
+): Promise<Array<{ tenantId: string; result: MigrationResult }>> {
+  const log = logger || console;
+
+  try {
+    log.info('Finding all tenant schemas...');
+
+    // Query for all schemas that match tenant pattern
+    const result = await db.raw<{ rows: Array<{ schema_name: string }> }>(`
+      SELECT schema_name
+      FROM information_schema.schemata
+      WHERE schema_name LIKE 'tenant_%'
+      ORDER BY schema_name
+    `);
+
+    const tenantSchemas = result.rows || [];
+
+    if (tenantSchemas.length === 0) {
+      log.info('No tenant schemas found');
+      return [];
+    }
+
+    log.info({ count: tenantSchemas.length }, 'Found tenant schemas');
+
+    // Run migrations for each tenant
+    const results = [];
+    for (const { schema_name } of tenantSchemas) {
+      const tenantId = schema_name.replace('tenant_', '');
+      const result = await runTenantMigrations(db, tenantId, logger);
+      results.push({ tenantId, result });
+    }
+
+    return results;
+  } catch (error) {
+    log.error({
+      msg: 'Failed to run migrations for all tenants',
+      error: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+}
+{{/if}}
+{{/if}}
+
+/**
+ * Rollback the last batch of migrations
+ *
+ * This function rolls back the most recent batch of migrations.
+ * Use with caution - only use in development or for emergency rollbacks.
+ *
+ * @param db - Knex database instance
+ * @param logger - Optional Pino logger instance
+ * @returns Rollback result
+ */
+export async function rollbackMigrations(
+  db: Knex,
+  logger?: any
+): Promise<MigrationResult> {
+  try {
+    const log = logger || console;
+
+    log.warn('Rolling back last migration batch...');
+
+    const [batch, migrations] = await db.migrate.rollback();
+
+    if (migrations.length === 0) {
+      log.info('No migrations to rollback');
+      return { success: true, batch, migrations };
+    }
+
+    log.info({
+      msg: 'Rollback completed',
+      batch,
+      count: migrations.length,
+      migrations,
+    });
+
+    return { success: true, batch, migrations };
+  } catch (error) {
+    const log = logger || console;
+    log.error({
+      msg: 'Rollback failed',
+      error: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
+      success: false,
+      error: error instanceof Error ? error : new Error(String(error)),
+    };
+  }
+}
+
+/**
+ * Get migration status
+ *
+ * Returns information about completed and pending migrations.
+ *
+ * @param db - Knex database instance
+ * @returns Migration status information
+ */
+export async function getMigrationStatus(db: Knex): Promise<{
+  completed: Array<{ name: string; batch: number; migration_time: Date }>;
+  pending: string[];
+}> {
+  const [completed, pending] = await Promise.all([
+    db('knex_migrations').select('*').orderBy('id', 'asc'),
+    db.migrate.list().then(([, pendingMigrations]) => pendingMigrations),
+  ]);
+
+  return { completed, pending };
+}

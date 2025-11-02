@@ -1,0 +1,327 @@
+# Test Suite Documentation
+
+This directory contains comprehensive tests for the {{service.name}} service.
+
+## Test Structure
+
+```
+test/
+├── routes/              # Route/endpoint tests
+│   ├── auth.test.ts     # Authentication route tests
+│   └── health.test.ts   # Health check route tests
+├── helpers/             # Test helper utilities
+│   └── test-helpers.ts  # Shared test functions
+├── fixtures/            # Test data fixtures
+│   └── users.ts         # User test data
+├── setup.ts             # Global test configuration
+└── README.md            # This file
+```
+
+## Running Tests
+
+```bash
+# Run all tests
+pnpm test
+
+# Run tests in watch mode
+pnpm test:watch
+
+# Run tests with coverage report
+pnpm test:coverage
+
+# Run specific test file
+pnpm test auth.test.ts
+
+# Run tests matching a pattern
+pnpm test --testNamePattern="register"
+```
+
+## Test Coverage
+
+The test suite aims for 80%+ coverage across:
+
+- **Branches**: 80%
+- **Functions**: 80%
+- **Lines**: 80%
+- **Statements**: 80%
+
+View coverage report:
+```bash
+pnpm test:coverage
+open coverage/lcov-report/index.html
+```
+
+## Test Helpers
+
+### setupTestEnvironment()
+Creates a test Fastify app instance with all plugins registered. Returns a `TestContext` object containing the app and plugin instances (database, Redis, NATS).
+
+```typescript
+const context = await setupTestEnvironment();
+const app = context.app;
+const db = context.db;
+```
+
+### teardownTestEnvironment(context)
+Cleans up and closes all connections (database, Redis, NATS, app).
+
+```typescript
+await teardownTestEnvironment(context);
+```
+
+{{#if service.features.database}}### setupTestDatabase(db)
+Creates necessary database tables for testing.
+
+```typescript
+await setupTestDatabase(db);
+```
+
+### cleanTestDatabase(db)
+Removes all data from database tables.
+
+```typescript
+await cleanTestDatabase(db);
+```
+
+### teardownTestDatabase(db)
+Drops all database tables.
+
+```typescript
+await teardownTestDatabase(db);
+```
+{{/if}}
+
+{{#if service.features.jwt}}### createTestUser(db, userData)
+Creates a test user in the database with hashed password.
+
+```typescript
+const user = await createTestUser(db, {
+  email: 'test@example.com',
+  password: 'SecurePassword123!',
+  name: 'Test User',
+});
+```
+
+### loginTestUser(app, credentials)
+Logs in a test user and returns auth tokens.
+
+```typescript
+const { accessToken, refreshToken, user } = await loginTestUser(app, {
+  email: 'test@example.com',
+  password: 'SecurePassword123!',
+});
+```
+
+### createAuthHeader(token)
+Creates an Authorization header with Bearer token.
+
+```typescript
+const headers = createAuthHeader(accessToken);
+// { authorization: 'Bearer eyJhbGc...' }
+```
+{{/if}}
+
+### Utility Functions
+
+- `wait(ms)` - Wait for specified milliseconds
+- `generateRandomEmail()` - Generate unique test email
+- `generateRandomName()` - Generate random test name
+
+## Test Fixtures
+
+Pre-defined test data is available in `fixtures/users.ts`:
+
+```typescript
+import { getValidUser, getInvalidUser } from '../fixtures/users.js';
+
+// Get a valid test user
+const userData = getValidUser('user1');
+
+// Get an invalid test user
+const invalidUser = getInvalidUser('invalidEmail');
+```
+
+## Writing Tests
+
+### Test Structure (AAA Pattern)
+
+Follow the **Arrange, Act, Assert** pattern:
+
+```typescript
+it('should successfully register a new user', async () => {
+  // Arrange: Setup test data
+  const userData = {
+    email: 'test@example.com',
+    password: 'SecurePassword123!',
+    name: 'Test User',
+  };
+
+  // Act: Execute the operation
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/register',
+    payload: userData,
+  });
+
+  // Assert: Verify the results
+  expect(response.statusCode).toBe(201);
+  expect(response.json()).toHaveProperty('accessToken');
+});
+```
+
+### Test Isolation
+
+Each test should be independent and not rely on other tests. Use `beforeEach` to clean the database:
+
+```typescript
+beforeEach(async () => {
+  await cleanTestDatabase(db);
+});
+```
+
+### Async/Await
+
+Always use `async/await` for asynchronous operations:
+
+```typescript
+it('should do something async', async () => {
+  const result = await someAsyncOperation();
+  expect(result).toBe(expected);
+});
+```
+
+### Descriptive Test Names
+
+Use clear, descriptive test names that explain what is being tested:
+
+```typescript
+// Good
+it('should reject registration with duplicate email')
+
+// Bad
+it('test registration')
+```
+
+## Authentication Tests
+
+The `auth.test.ts` file contains comprehensive tests for:
+
+### POST /auth/register
+- ✓ Successfully registers new user
+- ✓ Returns access and refresh tokens
+- ✓ Hashes password (not stored in plain text)
+- ✗ Rejects duplicate email
+- ✗ Rejects invalid email format
+- ✗ Rejects weak password
+- ✗ Rejects missing required fields
+
+### POST /auth/login
+- ✓ Successfully logs in with valid credentials
+- ✓ Returns valid JWT tokens
+- ✓ Updates last_login_at timestamp
+- ✗ Rejects invalid email
+- ✗ Rejects invalid password
+- ✗ Rejects non-existent user
+
+### POST /auth/refresh
+- ✓ Successfully refreshes token
+- ✓ Returns new access token
+- ✓ Implements token rotation
+- ✗ Rejects invalid refresh token
+- ✗ Rejects expired refresh token
+- ✗ Rejects blacklisted token
+
+### POST /auth/logout
+- ✓ Successfully logs out user
+- ✓ Blacklists token in Redis
+- ✗ Rejects invalid token
+- ✗ Rejects already logged out token
+
+### GET /auth/me
+- ✓ Returns current user profile
+- ✓ Excludes password_hash from response
+- ✗ Rejects missing Authorization header
+- ✗ Rejects invalid token
+- ✗ Rejects blacklisted token
+
+### Integration Tests
+- Complete registration → login → refresh → logout flow
+- Concurrent login attempts
+- Token expiry scenarios
+- Session maintenance
+
+## Environment Variables
+
+Test-specific environment variables are set in `test/setup.ts`:
+
+{{#if service.features.jwt}}- `JWT_SECRET`: Test JWT secret
+- `JWT_EXPIRES_IN`: Token expiration time
+{{/if}}{{#if service.features.database}}- `DATABASE_URL`: Test database connection
+{{/if}}{{#if service.features.cache}}- `REDIS_URL`: Test Redis connection (DB 15)
+{{/if}}{{#if service.features.messageQueue}}- `NATS_URL`: Test NATS connection
+{{/if}}- `NODE_ENV`: Set to 'test'
+- `LOG_LEVEL`: Set to 'silent'
+
+## Continuous Integration
+
+Tests are designed to run in CI environments:
+
+- Tests use separate database ({{#if (eq infrastructure.database.type "postgresql")}}PostgreSQL test database{{/if}}{{#if (eq infrastructure.database.type "sqlite")}}in-memory SQLite{{/if}})
+- Redis uses separate database (DB 15)
+- Tests are isolated and can run in parallel
+- No external dependencies required
+
+## Best Practices
+
+1. **Test Isolation**: Each test should be independent
+2. **Clean State**: Use `beforeEach` to reset database state
+3. **Descriptive Names**: Test names should clearly describe what is being tested
+4. **AAA Pattern**: Arrange, Act, Assert
+5. **Coverage**: Aim for 80%+ coverage
+6. **Edge Cases**: Test both success and failure scenarios
+7. **Error Messages**: Verify error messages are clear and helpful
+8. **Security**: Test authentication, authorization, and input validation
+9. **Performance**: Keep tests fast (use in-memory databases when possible)
+10. **Documentation**: Update this README when adding new test utilities
+
+## Troubleshooting
+
+### Tests Failing to Connect to Database
+{{#if (eq infrastructure.database.type "postgresql")}}Ensure PostgreSQL is running and the test database exists:
+```bash
+createdb {{service.name}}_test
+```
+{{/if}}{{#if (eq infrastructure.database.type "sqlite")}}Tests use in-memory SQLite by default, no setup required.
+{{/if}}
+
+{{#if service.features.cache}}### Tests Failing to Connect to Redis
+Ensure Redis is running:
+```bash
+docker run -d -p 6379:6379 redis:7-alpine
+```
+{{/if}}
+
+{{#if service.features.messageQueue}}### Tests Failing to Connect to NATS
+Ensure NATS is running:
+```bash
+docker run -d -p 4222:4222 nats:2.10-alpine
+```
+{{/if}}
+
+### Tests Timing Out
+Increase the timeout in `jest.config.js`:
+```javascript
+testTimeout: 60000, // 60 seconds
+```
+
+### Coverage Not Meeting Threshold
+Run coverage report to see which files need more tests:
+```bash
+pnpm test:coverage
+```
+
+## Resources
+
+- [Jest Documentation](https://jestjs.io/)
+- [Fastify Testing](https://fastify.dev/docs/latest/Guides/Testing/)
+- [Testing Best Practices](https://testingjavascript.com/)

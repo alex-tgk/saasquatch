@@ -1,0 +1,89 @@
+import { Knex } from 'knex';
+
+/**
+ * Migration: Create users table
+ *
+ * This migration creates the core users table with all necessary fields for authentication,
+ * user management, and auditing. The schema supports both PostgreSQL and SQLite databases.
+ *
+ * Fields:
+ * - id: UUID primary key (auto-generated)
+ * - email: Unique email address for login
+ * - password_hash: Bcrypt-hashed password (never store plain text)
+ * - name: User's full name
+ * - is_active: Soft delete / account status flag
+ * - email_verified: Email verification status
+ * - verification_token: Token for email verification (nullable)
+ * - verification_token_expires_at: Token expiration timestamp
+ * - last_login_at: Timestamp of last successful login
+ * - created_at: Account creation timestamp
+ * - updated_at: Last modification timestamp
+ *
+ * Indexes:
+ * - email (unique): Fast email lookups for authentication
+ * - email_verified: Filter verified/unverified users
+ * - is_active: Filter active/inactive accounts
+ * - verification_token: Quick token validation
+ * - created_at: Sort users by registration date
+ */
+
+export async function up(knex: Knex): Promise<void> {
+  await knex.schema.createTable('users', (table) => {
+    // Primary key
+{{#if (eq infrastructure.database.type "postgresql")}}
+    table.uuid('id').primary().defaultTo(knex.raw('gen_random_uuid()'));
+{{else}}
+    // SQLite uses TEXT for UUIDs, generate in application code
+    table.string('id', 36).primary();
+{{/if}}
+
+    // Authentication fields
+    table.string('email', 255).notNullable().unique()
+      .comment('User email address - used for login and must be unique');
+    table.string('password_hash', 255).notNullable()
+      .comment('Bcrypt-hashed password - never store plain text passwords');
+
+    // Profile fields
+    table.string('name', 255).notNullable()
+      .comment('User full name or display name');
+
+    // Account status fields
+    table.boolean('is_active').notNullable().defaultTo(true)
+      .comment('Account active status - false for soft-deleted or suspended accounts');
+    table.boolean('email_verified').notNullable().defaultTo(false)
+      .comment('Whether user has verified their email address');
+
+    // Email verification fields
+    table.string('verification_token', 255).nullable()
+      .comment('Current email verification token - null after verification');
+    table.timestamp('verification_token_expires_at').nullable()
+      .comment('When the verification token expires');
+
+    // Activity tracking
+    table.timestamp('last_login_at').nullable()
+      .comment('Timestamp of last successful login');
+
+    // Audit timestamps
+    table.timestamp('created_at').notNullable().defaultTo(knex.fn.now())
+      .comment('Account creation timestamp');
+    table.timestamp('updated_at').notNullable().defaultTo(knex.fn.now())
+      .comment('Last update timestamp');
+
+    // Indexes for performance
+    table.index('email', 'users_email_idx');
+    table.index('email_verified', 'users_email_verified_idx');
+    table.index('is_active', 'users_is_active_idx');
+    table.index('verification_token', 'users_verification_token_idx');
+    table.index('created_at', 'users_created_at_idx');
+
+    // Compound index for active + verified users query
+    table.index(['is_active', 'email_verified'], 'users_active_verified_idx');
+  });
+
+  console.log('✅ Created users table with authentication and verification fields');
+}
+
+export async function down(knex: Knex): Promise<void> {
+  await knex.schema.dropTableIfExists('users');
+  console.log('✅ Dropped users table');
+}

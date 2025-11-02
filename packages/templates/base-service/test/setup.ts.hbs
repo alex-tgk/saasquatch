@@ -1,0 +1,25 @@
+/**
+ * Jest Test Setup
+ * Global configuration and setup for all tests
+ */
+
+// Set test environment variables
+process.env.NODE_ENV = 'test';
+process.env.LOG_LEVEL = 'silent'; // Disable logging in tests
+{{#if service.features.jwt}}process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only';
+process.env.JWT_EXPIRES_IN = '15m';
+{{/if}}{{#if service.features.database}}{{#if (eq infrastructure.database.type "postgresql")}}process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgresql://test:test@localhost:5432/{{service.name}}_test';
+{{/if}}{{#if (eq infrastructure.database.type "sqlite")}}process.env.DATABASE_URL = ':memory:'; // Use in-memory SQLite for tests
+{{/if}}{{/if}}{{#if service.features.cache}}process.env.REDIS_URL = process.env.TEST_REDIS_URL || 'redis://localhost:6379/15'; // Use DB 15 for tests
+{{/if}}{{#if service.features.messageQueue}}process.env.NATS_URL = process.env.TEST_NATS_URL || 'nats://localhost:4222';
+{{/if}}{{#if service.features.cors}}process.env.CORS_ORIGIN = '*'; // Allow all origins in tests
+{{/if}}
+
+// Set longer timeout for async tests
+jest.setTimeout(30000);
+
+// Global test teardown
+afterAll(async () => {
+  // Give time for async operations to complete
+  await new Promise((resolve) => setTimeout(resolve, 100));
+});

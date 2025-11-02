@@ -5,9 +5,26 @@ declare module 'fastify' {
   interface FastifyInstance {
     nats: NatsConnection;
     natsCodec: Codec<string>;
+    jetstream: JetStreamClient;
+    jetstreamManager: JetStreamManager;
   }
 }
 
+/**
+ * NATS Plugin with JetStream Support
+ *
+ * Provides NATS messaging capabilities with JetStream for persistent, ordered messaging.
+ * JetStream enables event streaming, message replay, and guaranteed delivery.
+ *
+ * Configured Streams:
+ * - auth-events: Authentication-related events (user.registered, user.logged_in, etc.)
+ *
+ * Event Subjects:
+ * - auth.user.registered - New user registration
+ * - auth.user.logged_in - User login
+ * - auth.user.logged_out - User logout
+ * - auth.user.token_refreshed - Token refresh
+ */
 async function natsPlugin(fastify: any) {
   try {
     const nc = await connect({
@@ -17,14 +34,43 @@ async function natsPlugin(fastify: any) {
 
     const sc = StringCodec();
 
+    // Get JetStream client and manager
+    const js = nc.jetstream();
+    const jsm = await nc.jetstreamManager();
+
     fastify.log.info('NATS connected successfully');
 
+    // Configure JetStream stream for auth events
+    try {
+      await jsm.streams.info('auth-events');
+      fastify.log.info('JetStream stream "auth-events" already exists');
+    } catch (err) {
+      // Stream doesn't exist, create it
+      await jsm.streams.add({
+        name: 'auth-events',
+        subjects: ['auth.user.*'],
+        retention: 'limits', // Delete old messages when limits are reached
+        max_msgs: 100000, // Maximum 100k messages
+        max_bytes: 100 * 1024 * 1024, // Maximum 100MB
+        max_age: 7 * 24 * 60 * 60 * 1000000000, // Retain for 7 days (in nanoseconds)
+        storage: 'file', // Persist to disk
+        discard: 'old', // Discard oldest messages when limits reached
+      });
+      fastify.log.info('JetStream stream "auth-events" created successfully');
+    }
+
+    // Decorate Fastify instance with NATS clients
     fastify.decorate('nats', nc);
     fastify.decorate('natsCodec', sc);
+    fastify.decorate('jetstream', js);
+    fastify.decorate('jetstreamManager', jsm);
 
+    // Graceful shutdown
     fastify.addHook('onClose', async () => {
+      fastify.log.info('Closing NATS connection...');
       await nc.drain();
       await nc.close();
+      fastify.log.info('NATS connection closed');
     });
   } catch (error) {
     fastify.log.error('NATS connection failed:', error);

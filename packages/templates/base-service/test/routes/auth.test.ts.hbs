@@ -1,0 +1,1064 @@
+{{#if (or service.features.authentication service.features.jwt)}}import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals';
+import { FastifyInstance } from 'fastify';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  setupTestDatabase,
+  cleanTestDatabase,
+  createTestUser,
+  loginTestUser,
+  createAuthHeader,
+  generateRandomEmail,
+  generateRandomName,
+  wait,
+  TestContext,
+} from '../helpers/test-helpers.js';
+import { getValidUser, getInvalidUser } from '../fixtures/users.js';
+import bcrypt from 'bcrypt';
+
+describe('Authentication Routes', () => {
+  let context: TestContext;
+  let app: FastifyInstance;
+  {{#if service.features.database}}let db: any;
+  {{/if}}{{#if service.features.cache}}let redis: any;
+  {{/if}}
+
+  // Setup before all tests
+  beforeAll(async () => {
+    context = await setupTestEnvironment();
+    app = context.app;
+    {{#if service.features.database}}db = context.db;
+
+    // Setup database schema
+    await setupTestDatabase(db);
+    {{/if}}{{#if service.features.cache}}redis = context.redis;
+    {{/if}}
+  });
+
+  // Cleanup after all tests
+  afterAll(async () => {
+    {{#if service.features.database}}if (db) {
+      await cleanTestDatabase(db);
+    }
+    {{/if}}await teardownTestEnvironment(context);
+  });
+
+  // Clean database before each test to ensure isolation
+  beforeEach(async () => {
+    {{#if service.features.database}}await cleanTestDatabase(db);
+    {{/if}}{{#if service.features.cache}}// Clear Redis blacklist
+    if (redis) {
+      await redis.flushdb();
+    }
+    {{/if}}
+  });
+
+  describe('POST /auth/register', () => {
+    it('should successfully register a new user', async () => {
+      const userData = getValidUser('user1');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: userData,
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('accessToken');
+      expect(body).toHaveProperty('refreshToken');
+      expect(body).toHaveProperty('user');
+      expect(body.user).toHaveProperty('id');
+      expect(body.user.email).toBe(userData.email);
+      expect(body.user.name).toBe(userData.name);
+      expect(body.user).not.toHaveProperty('password');
+      expect(body.user).not.toHaveProperty('password_hash');
+      expect(body.user).toHaveProperty('createdAt');
+      expect(body.user).toHaveProperty('updatedAt');
+    });
+
+    it('should return valid JWT tokens', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: userData,
+      });
+
+      const body = JSON.parse(response.body);
+
+      // Verify access token format (JWT has 3 parts separated by dots)
+      expect(body.accessToken.split('.').length).toBe(3);
+      expect(body.refreshToken.split('.').length).toBe(3);
+
+      // Verify tokens are different
+      expect(body.accessToken).not.toBe(body.refreshToken);
+
+      // Verify we can decode the access token
+      const decoded = app.jwt.decode(body.accessToken) as any;
+      expect(decoded).toHaveProperty('id');
+      expect(decoded).toHaveProperty('email');
+      expect(decoded.email).toBe(userData.email);
+    });
+
+    it('should hash the password (not store plain text)', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'PlainTextPassword123!',
+        name: generateRandomName(),
+      };
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: userData,
+      });
+
+      expect(response.statusCode).toBe(201);
+
+      {{#if service.features.database}}// Check database for hashed password
+      const [user] = await db('users').where({ email: userData.email });
+      expect(user.password_hash).toBeDefined();
+      expect(user.password_hash).not.toBe(userData.password);
+
+      // Verify it's a valid bcrypt hash
+      expect(user.password_hash).toMatch(/^\$2[ayb]\$.{56}$/);
+
+      // Verify the hash is correct
+      const isValid = await bcrypt.compare(userData.password, user.password_hash);
+      expect(isValid).toBe(true);
+      {{/if}}
+    });
+
+    it('should reject duplicate email addresses', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      // First registration should succeed
+      const firstResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: userData,
+      });
+      expect(firstResponse.statusCode).toBe(201);
+
+      // Second registration with same email should fail
+      const secondResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: userData,
+      });
+
+      expect(secondResponse.statusCode).toBe(400);
+      const body = JSON.parse(secondResponse.body);
+      expect(body.error).toBe('Bad Request');
+      expect(body.message).toMatch(/email/i);
+    });
+
+    it('should reject invalid email format', async () => {
+      const invalidUser = getInvalidUser('invalidEmail');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: invalidUser,
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.message).toMatch(/email|validation/i);
+    });
+
+    it('should reject weak passwords (less than 8 characters)', async () => {
+      const weakPasswordUser = getInvalidUser('weakPassword');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: weakPasswordUser,
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.message).toMatch(/password|validation|8/i);
+    });
+
+    it('should reject missing required fields - email', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          password: 'SecurePassword123!',
+          name: 'Test User',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should reject missing required fields - password', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          email: 'test@example.com',
+          name: 'Test User',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should reject missing required fields - name', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          email: 'test@example.com',
+          password: 'SecurePassword123!',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should reject name that is too short (less than 2 characters)', async () => {
+      const shortNameUser = getInvalidUser('shortName');
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: shortNameUser,
+      });
+
+      expect(response.statusCode).toBe(400);
+      const body = JSON.parse(response.body);
+      expect(body.message).toMatch(/name|validation|2/i);
+    });
+  });
+
+  describe('POST /auth/login', () => {
+    it('should successfully log in with valid credentials', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}// Create user first
+      await createTestUser(db, userData);
+      {{/if}}
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: userData.email,
+          password: userData.password,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('accessToken');
+      expect(body).toHaveProperty('refreshToken');
+      expect(body).toHaveProperty('user');
+      expect(body.user.email).toBe(userData.email);
+      expect(body.user.name).toBe(userData.name);
+      expect(body.user).not.toHaveProperty('password_hash');
+    });
+
+    it('should return valid JWT tokens on login', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+      {{/if}}
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: userData.email,
+          password: userData.password,
+        },
+      });
+
+      const body = JSON.parse(response.body);
+
+      // Verify JWT format
+      expect(body.accessToken.split('.').length).toBe(3);
+      expect(body.refreshToken.split('.').length).toBe(3);
+
+      // Verify token contents
+      const decoded = app.jwt.decode(body.accessToken) as any;
+      expect(decoded.email).toBe(userData.email);
+    });
+
+    {{#if service.features.database}}it('should update last_login_at timestamp', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      const user = await createTestUser(db, userData);
+
+      // Initial last_login_at should be null
+      const [beforeLogin] = await db('users').where({ id: user.id });
+      expect(beforeLogin.last_login_at).toBeNull();
+
+      // Login
+      await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: userData.email,
+          password: userData.password,
+        },
+      });
+
+      // Check last_login_at was updated
+      const [afterLogin] = await db('users').where({ id: user.id });
+      expect(afterLogin.last_login_at).not.toBeNull();
+      expect(new Date(afterLogin.last_login_at).getTime()).toBeGreaterThan(
+        new Date(beforeLogin.created_at).getTime()
+      );
+    });
+    {{/if}}
+
+    it('should reject login with invalid email', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: 'nonexistent@example.com',
+          password: 'SomePassword123!',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Unauthorized');
+      expect(body.message).toMatch(/invalid|email|password|credentials/i);
+    });
+
+    it('should reject login with invalid password', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'CorrectPassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+      {{/if}}
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: userData.email,
+          password: 'WrongPassword123!',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Unauthorized');
+      expect(body.message).toMatch(/invalid|email|password|credentials/i);
+    });
+
+    it('should reject login for non-existent user', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: 'never.existed@example.com',
+          password: 'SomePassword123!',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('should reject login with missing email', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          password: 'SomePassword123!',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('should reject login with missing password', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: 'test@example.com',
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST /auth/refresh', () => {
+    it('should successfully refresh token with valid refresh token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { refreshToken: oldRefreshToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken: oldRefreshToken,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('accessToken');
+      expect(body).toHaveProperty('refreshToken');
+
+      // Verify new tokens are different from old ones
+      expect(body.accessToken).not.toBe(oldRefreshToken);
+      expect(body.refreshToken).not.toBe(oldRefreshToken);
+      {{/if}}
+    });
+
+    it('should return new access token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken: oldAccessToken, refreshToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken,
+        },
+      });
+
+      const body = JSON.parse(response.body);
+
+      // Verify new access token is different
+      expect(body.accessToken).not.toBe(oldAccessToken);
+
+      // Verify new access token is valid
+      expect(body.accessToken.split('.').length).toBe(3);
+
+      // Verify we can decode it
+      const decoded = app.jwt.decode(body.accessToken) as any;
+      expect(decoded.email).toBe(userData.email);
+      {{/if}}
+    });
+
+    it('should implement token rotation (new refresh token)', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { refreshToken: oldRefreshToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken: oldRefreshToken,
+        },
+      });
+
+      const body = JSON.parse(response.body);
+
+      // Token rotation: new refresh token should be different from old one
+      expect(body.refreshToken).not.toBe(oldRefreshToken);
+      expect(body.refreshToken.split('.').length).toBe(3);
+      {{/if}}
+    });
+
+    it('should reject invalid refresh token', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken: 'invalid.token.here',
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body);
+      expect(body.error).toBe('Unauthorized');
+      expect(body.message).toMatch(/invalid|token|refresh/i);
+    });
+
+    it('should reject expired refresh token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      // Create a refresh token that expires immediately
+      const expiredToken = app.jwt.sign(
+        {
+          id: 'test-id',
+          email: userData.email,
+          type: 'refresh',
+        },
+        {
+          expiresIn: '1ms', // Expires in 1 millisecond
+        }
+      );
+
+      // Wait for token to expire
+      await wait(10);
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken: expiredToken,
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body);
+      expect(body.message).toMatch(/expired|invalid|token/i);
+      {{/if}}
+    });
+
+    {{#if service.features.cache}}it('should reject blacklisted refresh token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { refreshToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      // Blacklist the token
+      const decoded = app.jwt.decode(refreshToken) as any;
+      await redis.set(
+        `blacklist:${decoded.jti || refreshToken}`,
+        'blacklisted',
+        'EX',
+        3600
+      );
+
+      // Try to use the blacklisted token
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken,
+        },
+      });
+
+      expect(response.statusCode).toBe(401);
+      const body = JSON.parse(response.body);
+      expect(body.message).toMatch(/blacklist|invalid|revoked/i);
+      {{/if}}
+    });
+    {{/if}}
+
+    it('should reject missing refresh token', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('POST /auth/logout', () => {
+    it('should successfully log out user', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader(accessToken),
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('message');
+      expect(body.message).toMatch(/logout|success/i);
+      {{/if}}
+    });
+
+    {{#if service.features.cache}}it('should blacklist token in Redis', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const decoded = app.jwt.decode(accessToken) as any;
+
+      // Logout
+      await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader(accessToken),
+      });
+
+      // Check if token is blacklisted in Redis
+      const blacklisted = await redis.get(`blacklist:${decoded.jti || accessToken}`);
+      expect(blacklisted).not.toBeNull();
+      {{/if}}
+    });
+    {{/if}}
+
+    it('should reject logout with invalid token', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader('invalid.token.here'),
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('should reject logout with missing Authorization header', async () => {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    {{#if service.features.cache}}it('should reject already logged out token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      // First logout should succeed
+      const firstResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader(accessToken),
+      });
+      expect(firstResponse.statusCode).toBe(200);
+
+      // Second logout with same token should fail (token is blacklisted)
+      const secondResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader(accessToken),
+      });
+      expect(secondResponse.statusCode).toBe(401);
+      {{/if}}
+    });
+    {{/if}}
+  });
+
+  describe('GET /auth/me', () => {
+    it('should return current user profile', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(accessToken),
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('id');
+      expect(body.email).toBe(userData.email);
+      expect(body.name).toBe(userData.name);
+      expect(body).toHaveProperty('createdAt');
+      expect(body).toHaveProperty('updatedAt');
+      {{/if}}
+    });
+
+    it('should exclude password_hash from response', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(accessToken),
+      });
+
+      const body = JSON.parse(response.body);
+      expect(body).not.toHaveProperty('password');
+      expect(body).not.toHaveProperty('password_hash');
+      {{/if}}
+    });
+
+    it('should reject request with missing Authorization header', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('should reject request with invalid token', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader('invalid.token.here'),
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    {{#if service.features.cache}}it('should reject request with blacklisted token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      // Logout (blacklist the token)
+      await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader(accessToken),
+      });
+
+      // Try to use blacklisted token
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(accessToken),
+      });
+
+      expect(response.statusCode).toBe(401);
+      {{/if}}
+    });
+    {{/if}}
+
+    it('should reject expired access token', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      // Create an expired token
+      const expiredToken = app.jwt.sign(
+        {
+          id: 'test-id',
+          email: userData.email,
+        },
+        {
+          expiresIn: '1ms',
+        }
+      );
+
+      // Wait for expiration
+      await wait(10);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(expiredToken),
+      });
+
+      expect(response.statusCode).toBe(401);
+      {{/if}}
+    });
+  });
+
+  describe('Integration: Complete Authentication Flows', () => {
+    it('should complete full registration → login → refresh → logout flow', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      // 1. Register
+      const registerResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: userData,
+      });
+      expect(registerResponse.statusCode).toBe(201);
+
+      // 2. Login
+      const loginResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: userData.email,
+          password: userData.password,
+        },
+      });
+      expect(loginResponse.statusCode).toBe(200);
+
+      const loginBody = JSON.parse(loginResponse.body);
+
+      // 3. Get profile
+      const profileResponse = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(loginBody.accessToken),
+      });
+      expect(profileResponse.statusCode).toBe(200);
+
+      // 4. Refresh token
+      const refreshResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/refresh',
+        payload: {
+          refreshToken: loginBody.refreshToken,
+        },
+      });
+      expect(refreshResponse.statusCode).toBe(200);
+
+      const refreshBody = JSON.parse(refreshResponse.body);
+
+      // 5. Logout
+      const logoutResponse = await app.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: createAuthHeader(refreshBody.accessToken),
+      });
+      expect(logoutResponse.statusCode).toBe(200);
+
+      // 6. Verify token is blacklisted
+      const afterLogoutResponse = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(refreshBody.accessToken),
+      });
+      expect(afterLogoutResponse.statusCode).toBe(401);
+    });
+
+    it('should handle concurrent login attempts for same user', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      // Make 5 concurrent login requests
+      const loginPromises = Array(5)
+        .fill(null)
+        .map(() =>
+          app.inject({
+            method: 'POST',
+            url: '/auth/login',
+            payload: {
+              email: userData.email,
+              password: userData.password,
+            },
+          })
+        );
+
+      const responses = await Promise.all(loginPromises);
+
+      // All should succeed
+      responses.forEach((response) => {
+        expect(response.statusCode).toBe(200);
+      });
+
+      // All should have different tokens
+      const tokens = responses.map((r) => JSON.parse(r.body).accessToken);
+      const uniqueTokens = new Set(tokens);
+      expect(uniqueTokens.size).toBe(5);
+      {{/if}}
+    });
+
+    it('should handle token expiry scenario', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      // Create a short-lived token
+      const shortLivedToken = app.jwt.sign(
+        {
+          id: 'test-id',
+          email: userData.email,
+        },
+        {
+          expiresIn: '100ms',
+        }
+      );
+
+      // Token should work initially
+      const beforeExpiry = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(shortLivedToken),
+      });
+      expect(beforeExpiry.statusCode).toBe(200);
+
+      // Wait for expiration
+      await wait(150);
+
+      // Token should be rejected
+      const afterExpiry = await app.inject({
+        method: 'GET',
+        url: '/auth/me',
+        headers: createAuthHeader(shortLivedToken),
+      });
+      expect(afterExpiry.statusCode).toBe(401);
+      {{/if}}
+    });
+
+    it('should maintain user session across multiple requests', async () => {
+      const userData = {
+        email: generateRandomEmail(),
+        password: 'SecurePassword123!',
+        name: generateRandomName(),
+      };
+
+      {{#if service.features.database}}await createTestUser(db, userData);
+
+      const { accessToken } = await loginTestUser(app, {
+        email: userData.email,
+        password: userData.password,
+      });
+
+      // Make multiple requests with same token
+      const requests = Array(10)
+        .fill(null)
+        .map(() =>
+          app.inject({
+            method: 'GET',
+            url: '/auth/me',
+            headers: createAuthHeader(accessToken),
+          })
+        );
+
+      const responses = await Promise.all(requests);
+
+      // All should succeed with same user data
+      responses.forEach((response) => {
+        expect(response.statusCode).toBe(200);
+        const body = JSON.parse(response.body);
+        expect(body.email).toBe(userData.email);
+        expect(body.name).toBe(userData.name);
+      });
+      {{/if}}
+    });
+  });
+});
+{{/if}}

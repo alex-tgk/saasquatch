@@ -1,0 +1,222 @@
+import { FastifyInstance } from 'fastify';
+import { buildApp } from '../../src/app.js';
+{{#if service.features.jwt}}import bcrypt from 'bcrypt';
+{{/if}}
+
+/**
+ * Test Helper Utilities
+ * Shared functions for setting up and tearing down test environments
+ */
+
+export interface TestContext {
+  app: FastifyInstance;
+  {{#if service.features.database}}db?: any;
+  {{/if}}{{#if service.features.cache}}redis?: any;
+  {{/if}}{{#if service.features.messageQueue}}nats?: any;
+  {{/if}}
+}
+
+/**
+ * Creates a Fastify app instance for testing
+ * Disables logging to keep test output clean
+ */
+export async function createTestApp(): Promise<FastifyInstance> {
+  const app = await buildApp({
+    logger: false, // Disable logging in tests
+  });
+
+  return app;
+}
+
+/**
+ * Sets up the test environment before tests
+ * Creates app instance and initializes plugins
+ */
+export async function setupTestEnvironment(): Promise<TestContext> {
+  const app = await createTestApp();
+
+  // Wait for app to be ready
+  await app.ready();
+
+  const context: TestContext = {
+    app,
+  };
+
+  {{#if service.features.database}}// Get database instance from app
+  if (app.hasDecorator('db')) {
+    context.db = app.db;
+  }
+
+  {{/if}}{{#if service.features.cache}}// Get Redis instance from app
+  if (app.hasDecorator('redis')) {
+    context.redis = app.redis;
+  }
+
+  {{/if}}{{#if service.features.messageQueue}}// Get NATS instance from app
+  if (app.hasDecorator('nats')) {
+    context.nats = app.nats;
+  }
+
+  {{/if}}return context;
+}
+
+/**
+ * Tears down the test environment after tests
+ * Closes database connections, Redis, NATS, and app
+ */
+export async function teardownTestEnvironment(context: TestContext): Promise<void> {
+  {{#if service.features.database}}// Clean up database
+  if (context.db) {
+    await context.db.destroy();
+  }
+
+  {{/if}}{{#if service.features.cache}}// Close Redis connection
+  if (context.redis) {
+    await context.redis.quit();
+  }
+
+  {{/if}}{{#if service.features.messageQueue}}// Close NATS connection
+  if (context.nats) {
+    await context.nats.close();
+  }
+
+  {{/if}}// Close Fastify app
+  if (context.app) {
+    await context.app.close();
+  }
+}
+
+{{#if service.features.database}}/**
+ * Sets up the test database schema
+ * Creates necessary tables for testing
+ */
+export async function setupTestDatabase(db: any): Promise<void> {
+  // Create users table
+  await db.schema.dropTableIfExists('users');
+  await db.schema.createTable('users', (table: any) => {
+    table.uuid('id').primary().defaultTo(db.raw('gen_random_uuid()'));
+    table.string('email').notNullable().unique();
+    table.string('password_hash').notNullable();
+    table.string('name').notNullable();
+    table.timestamp('created_at').defaultTo(db.fn.now());
+    table.timestamp('updated_at').defaultTo(db.fn.now());
+    table.timestamp('last_login_at').nullable();
+  });
+}
+
+/**
+ * Cleans the test database
+ * Removes all data from tables
+ */
+export async function cleanTestDatabase(db: any): Promise<void> {
+  // Delete all users
+  await db('users').delete();
+}
+
+/**
+ * Tears down the test database schema
+ * Drops all tables
+ */
+export async function teardownTestDatabase(db: any): Promise<void> {
+  await db.schema.dropTableIfExists('users');
+}
+
+{{/if}}{{#if service.features.jwt}}/**
+ * Creates a test user in the database
+ * Returns the created user (without password hash)
+ */
+export async function createTestUser(
+  db: any,
+  userData: {
+    email: string;
+    password: string;
+    name: string;
+  }
+): Promise<any> {
+  const passwordHash = await bcrypt.hash(userData.password, 10);
+
+  const [user] = await db('users')
+    .insert({
+      email: userData.email,
+      password_hash: passwordHash,
+      name: userData.name,
+    })
+    .returning(['id', 'email', 'name', 'created_at', 'updated_at']);
+
+  return user;
+}
+
+/**
+ * Logs in a test user and returns auth tokens
+ * Uses the app's inject method to make the login request
+ */
+export async function loginTestUser(
+  app: FastifyInstance,
+  credentials: {
+    email: string;
+    password: string;
+  }
+): Promise<{
+  accessToken: string;
+  refreshToken: string;
+  user: any;
+}> {
+  const response = await app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: credentials,
+  });
+
+  if (response.statusCode !== 200) {
+    throw new Error(`Login failed: ${response.statusCode} - ${response.body}`);
+  }
+
+  return JSON.parse(response.body);
+}
+
+/**
+ * Extracts the token from an Authorization header
+ */
+export function extractTokenFromHeader(authHeader: string): string {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    throw new Error('Invalid Authorization header format');
+  }
+  return authHeader.substring(7); // Remove 'Bearer ' prefix
+}
+
+/**
+ * Creates an Authorization header with Bearer token
+ */
+export function createAuthHeader(token: string): { authorization: string } {
+  return {
+    authorization: `Bearer ${token}`,
+  };
+}
+
+{{/if}}/**
+ * Waits for a specified amount of time (in milliseconds)
+ * Useful for testing time-based features like token expiry
+ */
+export async function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Generates a random email for testing
+ */
+export function generateRandomEmail(): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(7);
+  return `test-${timestamp}-${random}@example.com`;
+}
+
+/**
+ * Generates a random name for testing
+ */
+export function generateRandomName(): string {
+  const firstNames = ['John', 'Jane', 'Alice', 'Bob', 'Charlie', 'Diana'];
+  const lastNames = ['Doe', 'Smith', 'Johnson', 'Williams', 'Brown', 'Jones'];
+  const firstName = firstNames[Math.floor(Math.random() * firstNames.length)];
+  const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
+  return `${firstName} ${lastName}`;
+}

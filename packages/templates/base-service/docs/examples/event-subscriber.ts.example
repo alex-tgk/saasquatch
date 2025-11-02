@@ -1,0 +1,272 @@
+/**
+ * Example: Auth Events Subscriber
+ *
+ * This example demonstrates how to subscribe to authentication events
+ * published by the auth service using NATS JetStream.
+ *
+ * Use Cases:
+ * - Email service: Send welcome emails on user.registered
+ * - Analytics service: Track user activity
+ * - Security service: Monitor login patterns
+ * - Notification service: Send alerts on suspicious activity
+ */
+
+import { connect, StringCodec, JetStreamClient } from 'nats';
+
+// Event type definitions (copy from auth service or use shared package)
+interface AuthEvent {
+  subject: string;
+  data: {
+    userId: string;
+    email?: string;
+    name?: string;
+    timestamp: string;
+    ip?: string;
+    userAgent?: string;
+  };
+  metadata: {
+    service: string;
+    version: string;
+    environment: string;
+  };
+}
+
+async function main() {
+  try {
+    // Connect to NATS
+    const nc = await connect({
+      servers: process.env.NATS_URL || 'nats://localhost:4222',
+      name: 'example-subscriber',
+    });
+
+    console.log('Connected to NATS');
+
+    // Get JetStream client
+    const js = nc.jetstream();
+    const sc = StringCodec();
+
+    // Option 1: Simple subscription (no persistence)
+    console.log('\n=== Option 1: Simple Subscription ===');
+    await simpleSubscription(nc, sc);
+
+    // Option 2: JetStream consumer (durable, persistent)
+    console.log('\n=== Option 2: JetStream Consumer ===');
+    await jetStreamConsumer(js, sc);
+
+  } catch (error) {
+    console.error('Fatal error:', error);
+    process.exit(1);
+  }
+}
+
+/**
+ * Option 1: Simple Subscription
+ *
+ * Pros: Easy to implement
+ * Cons: No persistence, messages lost if subscriber is down
+ */
+async function simpleSubscription(nc: any, sc: any) {
+  const sub = nc.subscribe('auth.user.*');
+
+  console.log('Listening for auth events...');
+
+  for await (const msg of sub) {
+    const event: AuthEvent = JSON.parse(sc.decode(msg.data));
+
+    console.log(`\nReceived: ${event.subject}`);
+    console.log(`User: ${event.data.email || event.data.userId}`);
+    console.log(`Time: ${event.data.timestamp}`);
+
+    // Handle different event types
+    switch (event.subject) {
+      case 'auth.user.registered':
+        await handleUserRegistered(event);
+        break;
+
+      case 'auth.user.logged_in':
+        await handleUserLoggedIn(event);
+        break;
+
+      case 'auth.user.logged_out':
+        await handleUserLoggedOut(event);
+        break;
+
+      case 'auth.user.token_refreshed':
+        await handleUserTokenRefreshed(event);
+        break;
+
+      default:
+        console.log('Unknown event type:', event.subject);
+    }
+  }
+}
+
+/**
+ * Option 2: JetStream Consumer (Recommended for Production)
+ *
+ * Pros: Durable, persistent, message replay, acknowledgments
+ * Cons: Slightly more complex setup
+ */
+async function jetStreamConsumer(js: JetStreamClient, sc: any) {
+  try {
+    // Create or get consumer
+    const jsm = await js.jetstreamManager();
+
+    // Check if consumer exists, create if not
+    try {
+      await jsm.consumers.info('auth-events', 'example-service');
+    } catch {
+      // Consumer doesn't exist, create it
+      await jsm.consumers.add('auth-events', {
+        durable_name: 'example-service',
+        ack_policy: 'explicit', // Manual acknowledgment
+        ack_wait: 30_000_000_000, // 30 seconds in nanoseconds
+        max_deliver: 3, // Retry up to 3 times
+        filter_subject: 'auth.user.*', // Subscribe to all auth events
+        deliver_policy: 'all', // Process all messages (or 'new' for only new ones)
+      });
+      console.log('Created new consumer: example-service');
+    }
+
+    // Get consumer
+    const consumer = await js.consumers.get('auth-events', 'example-service');
+
+    console.log('Consuming messages from JetStream...');
+
+    // Start consuming messages
+    const messages = await consumer.consume({
+      max_messages: 100, // Process up to 100 messages in parallel
+    });
+
+    for await (const msg of messages) {
+      try {
+        const event: AuthEvent = JSON.parse(sc.decode(msg.data));
+
+        console.log(`\n[JetStream] Received: ${event.subject}`);
+        console.log(`User: ${event.data.email || event.data.userId}`);
+        console.log(`Time: ${event.data.timestamp}`);
+
+        // Process event
+        await processEvent(event);
+
+        // Acknowledge successful processing
+        msg.ack();
+
+      } catch (error) {
+        console.error('Error processing message:', error);
+        // Negative acknowledgment - message will be redelivered
+        msg.nak();
+      }
+    }
+
+  } catch (error) {
+    console.error('JetStream consumer error:', error);
+    throw error;
+  }
+}
+
+/**
+ * Event Handlers
+ */
+
+async function handleUserRegistered(event: AuthEvent) {
+  console.log('Action: Send welcome email to', event.data.email);
+
+  // Example: Send welcome email
+  // await emailService.sendWelcomeEmail({
+  //   to: event.data.email,
+  //   name: event.data.name,
+  //   userId: event.data.userId
+  // });
+}
+
+async function handleUserLoggedIn(event: AuthEvent) {
+  console.log('Action: Track login activity');
+  console.log('  IP:', event.data.ip || 'unknown');
+  console.log('  User Agent:', event.data.userAgent || 'unknown');
+
+  // Example: Security monitoring
+  // await securityService.trackLogin({
+  //   userId: event.data.userId,
+  //   ip: event.data.ip,
+  //   timestamp: event.data.timestamp
+  // });
+
+  // Example: Detect suspicious activity
+  // const isSuspicious = await detectSuspiciousLogin(event.data);
+  // if (isSuspicious) {
+  //   await notificationService.sendSecurityAlert(event.data.userId);
+  // }
+}
+
+async function handleUserLoggedOut(event: AuthEvent) {
+  console.log('Action: Clear user sessions');
+
+  // Example: Clear caches
+  // await cacheService.clearUserSessions(event.data.userId);
+
+  // Example: Update session status
+  // await sessionService.markAsLoggedOut({
+  //   userId: event.data.userId,
+  //   timestamp: event.data.timestamp
+  // });
+}
+
+async function handleUserTokenRefreshed(event: AuthEvent) {
+  console.log('Action: Update active session timestamp');
+
+  // Example: Track active sessions
+  // await analyticsService.trackActiveSession({
+  //   userId: event.data.userId,
+  //   lastActivity: event.data.timestamp
+  // });
+}
+
+/**
+ * Generic event processor
+ */
+async function processEvent(event: AuthEvent) {
+  switch (event.subject) {
+    case 'auth.user.registered':
+      await handleUserRegistered(event);
+      break;
+
+    case 'auth.user.logged_in':
+      await handleUserLoggedIn(event);
+      break;
+
+    case 'auth.user.logged_out':
+      await handleUserLoggedOut(event);
+      break;
+
+    case 'auth.user.token_refreshed':
+      await handleUserTokenRefreshed(event);
+      break;
+
+    default:
+      console.log('Unknown event type:', event.subject);
+  }
+}
+
+// Run the example
+main().catch(console.error);
+
+/**
+ * Running this example:
+ *
+ * 1. Ensure NATS server is running:
+ *    docker run -p 4222:4222 nats:latest -js
+ *
+ * 2. Install dependencies:
+ *    npm install nats
+ *
+ * 3. Run the subscriber:
+ *    ts-node event-subscriber.ts
+ *
+ * 4. In another terminal, trigger auth events:
+ *    curl -X POST http://localhost:3001/auth/register \
+ *      -H "Content-Type: application/json" \
+ *      -d '{"email":"test@example.com","password":"password123","name":"Test User"}'
+ *
+ * 5. Watch events appear in subscriber console
+ */

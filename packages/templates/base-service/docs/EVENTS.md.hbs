@@ -1,0 +1,414 @@
+# Authentication Events
+
+This document describes the authentication events published by the {{service.name}} service to NATS JetStream.
+
+## Overview
+
+Authentication events enable distributed event-driven architecture by publishing key user authentication actions to NATS. Other services can subscribe to these events to:
+
+- Send welcome emails when users register
+- Track login activity and security alerts
+- Update user sessions across services
+- Maintain audit logs
+- Trigger business workflows
+
+## Event Publishing
+
+Events are published using a **fire-and-forget** pattern. This means:
+
+- Events are published asynchronously
+- Event failures are logged but don't break auth flows
+- Auth operations succeed even if event publishing fails
+- Events use NATS JetStream for persistence and replay
+
+## NATS Configuration
+
+### JetStream Stream
+
+**Stream Name**: `auth-events`
+
+**Configuration**:
+- **Subjects**: `auth.user.*`
+- **Retention**: Limits-based (oldest messages deleted when limits reached)
+- **Max Messages**: 100,000
+- **Max Size**: 100 MB
+- **Max Age**: 7 days
+- **Storage**: File (persisted to disk)
+- **Discard Policy**: Old (discard oldest when full)
+
+## Event Types
+
+### 1. User Registered
+
+**Subject**: `auth.user.registered`
+
+**Published When**: A new user successfully completes registration
+
+**Payload**:
+```typescript
+{
+  subject: 'auth.user.registered',
+  data: {
+    userId: string,        // UUID of the newly registered user
+    email: string,         // User's email address
+    name: string,          // User's full name
+    timestamp: string      // ISO 8601 timestamp of registration
+  },
+  metadata: {
+    service: 'auth-service',
+    version: '1.0.0',
+    environment: 'production'
+  }
+}
+```
+
+**Example**:
+```json
+{
+  "subject": "auth.user.registered",
+  "data": {
+    "userId": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "john.doe@example.com",
+    "name": "John Doe",
+    "timestamp": "2024-01-01T12:00:00.000Z"
+  },
+  "metadata": {
+    "service": "auth-service",
+    "version": "1.0.0",
+    "environment": "production"
+  }
+}
+```
+
+**Use Cases**:
+- Send welcome email
+- Create user profile in other services
+- Initialize user preferences
+- Trigger onboarding workflow
+- Add to analytics platform
+
+---
+
+### 2. User Logged In
+
+**Subject**: `auth.user.logged_in`
+
+**Published When**: A user successfully logs in with valid credentials
+
+**Payload**:
+```typescript
+{
+  subject: 'auth.user.logged_in',
+  data: {
+    userId: string,        // UUID of the logged-in user
+    email: string,         // User's email address
+    timestamp: string,     // ISO 8601 timestamp of login
+    ip?: string,           // Optional: IP address (from X-Forwarded-For or request.ip)
+    userAgent?: string     // Optional: User agent string
+  },
+  metadata: {
+    service: 'auth-service',
+    version: '1.0.0',
+    environment: 'production'
+  }
+}
+```
+
+**Example**:
+```json
+{
+  "subject": "auth.user.logged_in",
+  "data": {
+    "userId": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "john.doe@example.com",
+    "timestamp": "2024-01-01T12:30:00.000Z",
+    "ip": "192.168.1.100",
+    "userAgent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
+  },
+  "metadata": {
+    "service": "auth-service",
+    "version": "1.0.0",
+    "environment": "production"
+  }
+}
+```
+
+**Use Cases**:
+- Track login activity
+- Detect suspicious login patterns
+- Update last active timestamp
+- Send security notifications
+- Maintain session across services
+
+---
+
+### 3. User Logged Out
+
+**Subject**: `auth.user.logged_out`
+
+**Published When**: A user successfully logs out (token blacklisted)
+
+**Payload**:
+```typescript
+{
+  subject: 'auth.user.logged_out',
+  data: {
+    userId: string,        // UUID of the logged-out user
+    timestamp: string      // ISO 8601 timestamp of logout
+  },
+  metadata: {
+    service: 'auth-service',
+    version: '1.0.0',
+    environment: 'production'
+  }
+}
+```
+
+**Example**:
+```json
+{
+  "subject": "auth.user.logged_out",
+  "data": {
+    "userId": "123e4567-e89b-12d3-a456-426614174000",
+    "timestamp": "2024-01-01T13:00:00.000Z"
+  },
+  "metadata": {
+    "service": "auth-service",
+    "version": "1.0.0",
+    "environment": "production"
+  }
+}
+```
+
+**Use Cases**:
+- Invalidate sessions in other services
+- Clear user caches
+- Update session status
+- Audit logging
+
+---
+
+### 4. User Token Refreshed
+
+**Subject**: `auth.user.token_refreshed`
+
+**Published When**: A user refreshes their access token using a refresh token
+
+**Payload**:
+```typescript
+{
+  subject: 'auth.user.token_refreshed',
+  data: {
+    userId: string,        // UUID of the user refreshing token
+    timestamp: string      // ISO 8601 timestamp of token refresh
+  },
+  metadata: {
+    service: 'auth-service',
+    version: '1.0.0',
+    environment: 'production'
+  }
+}
+```
+
+**Example**:
+```json
+{
+  "subject": "auth.user.token_refreshed",
+  "data": {
+    "userId": "123e4567-e89b-12d3-a456-426614174000",
+    "timestamp": "2024-01-01T12:45:00.000Z"
+  },
+  "metadata": {
+    "service": "auth-service",
+    "version": "1.0.0",
+    "environment": "production"
+  }
+}
+```
+
+**Use Cases**:
+- Track active sessions
+- Monitor token refresh patterns
+- Detect abnormal refresh rates
+- Security auditing
+
+---
+
+## Subscribing to Events
+
+### Using NATS CLI
+
+```bash
+# Subscribe to all auth events
+nats sub "auth.user.*"
+
+# Subscribe to specific event
+nats sub "auth.user.registered"
+```
+
+### Using Node.js (NATS Client)
+
+```typescript
+import { connect, StringCodec } from 'nats';
+
+const nc = await connect({ servers: 'nats://localhost:4222' });
+const sc = StringCodec();
+
+// Subscribe to all auth events
+const sub = nc.subscribe('auth.user.*');
+
+for await (const msg of sub) {
+  const event = JSON.parse(sc.decode(msg.data));
+  console.log('Received event:', event.subject);
+  console.log('Payload:', event.data);
+
+  // Process event based on type
+  switch (event.subject) {
+    case 'auth.user.registered':
+      // Send welcome email
+      break;
+    case 'auth.user.logged_in':
+      // Track login activity
+      break;
+    // ... handle other events
+  }
+}
+```
+
+### Using JetStream Consumer
+
+```typescript
+import { connect, StringCodec } from 'nats';
+
+const nc = await connect({ servers: 'nats://localhost:4222' });
+const js = nc.jetstream();
+
+// Create durable consumer
+const consumer = await js.consumers.get('auth-events', 'my-service-consumer');
+
+// Process messages
+const messages = await consumer.consume();
+
+for await (const msg of messages) {
+  const sc = StringCodec();
+  const event = JSON.parse(sc.decode(msg.data));
+
+  // Process event
+  console.log('Processing:', event.subject);
+
+  // Acknowledge message
+  msg.ack();
+}
+```
+
+## Error Handling
+
+Event publishing uses graceful error handling:
+
+1. **Success**: Event published to NATS, logged with `info` level
+2. **Failure**: Error logged with `error` level, auth operation continues
+3. **No Impact**: Event failures never break auth flows
+
+Example log output:
+
+**Success**:
+```json
+{
+  "level": "info",
+  "event": "auth.user.registered",
+  "userId": "123e4567-e89b-12d3-a456-426614174000",
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "msg": "Auth event published successfully"
+}
+```
+
+**Failure**:
+```json
+{
+  "level": "error",
+  "event": "auth.user.registered",
+  "error": "Connection timeout",
+  "payload": { "userId": "...", "email": "..." },
+  "msg": "Failed to publish auth event"
+}
+```
+
+## Best Practices
+
+### For Publishers (Auth Service)
+
+1. **Keep events simple** - Include only essential data
+2. **Use timestamps** - Always include ISO 8601 timestamps
+3. **Log failures** - Track event publishing issues
+4. **Don't block** - Use fire-and-forget pattern
+5. **Include metadata** - Service name, version, environment
+
+### For Subscribers (Consumer Services)
+
+1. **Use durable consumers** - Ensure message persistence
+2. **Acknowledge messages** - Mark messages as processed
+3. **Handle duplicates** - Events may be delivered multiple times
+4. **Use idempotent processing** - Same event processed twice should be safe
+5. **Set up error handling** - Dead letter queues for failed processing
+
+## Security Considerations
+
+1. **Sensitive Data**: Events intentionally exclude sensitive data like passwords or tokens
+2. **PII**: Email and name are included but should be handled per privacy policies
+3. **Access Control**: Configure NATS ACLs to restrict event access
+4. **Encryption**: Use TLS for NATS connections in production
+
+## Monitoring
+
+### Key Metrics
+
+Monitor these metrics for healthy event publishing:
+
+- Event publish success rate
+- Event publish latency
+- NATS connection health
+- JetStream stream size
+- Consumer lag
+- Dead letter queue size
+
+### NATS CLI Monitoring
+
+```bash
+# Check stream status
+nats stream info auth-events
+
+# Check consumer status
+nats consumer info auth-events my-service-consumer
+
+# Monitor messages
+nats stream view auth-events
+```
+
+## Troubleshooting
+
+### Events not publishing
+
+1. Check NATS connection: `NATS connected successfully` in logs
+2. Check JetStream enabled: `nats server info`
+3. Check stream exists: `nats stream ls`
+4. Check auth route logs for publish errors
+
+### Events not received
+
+1. Check consumer configuration
+2. Verify subject subscription pattern
+3. Check consumer acknowledgments
+4. Review consumer lag
+
+### High event volume
+
+1. Increase stream limits (max_msgs, max_bytes)
+2. Decrease retention period (max_age)
+3. Add more consumers for parallel processing
+4. Archive old events
+
+## Related Documentation
+
+- [NATS JetStream Documentation](https://docs.nats.io/nats-concepts/jetstream)
+- [Auth Routes API](/docs/api/auth.md)
+- [Service Architecture](/docs/architecture.md)

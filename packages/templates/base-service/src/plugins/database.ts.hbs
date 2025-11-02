@@ -1,5 +1,6 @@
 import fp from 'fastify-plugin';
 import knex, { Knex } from 'knex';
+import { runMigrations } from '../utils/migrate.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -71,6 +72,31 @@ async function databasePlugin(fastify: any) {
   } catch (error) {
     fastify.log.error('Database connection failed:', error);
     throw error;
+  }
+
+  // Run migrations automatically on startup (configurable via environment)
+  const autoMigrate = process.env.AUTO_MIGRATE !== 'false'; // Default: true
+  if (autoMigrate) {
+    fastify.log.info('Running database migrations...');
+    const result = await runMigrations(db, fastify.log);
+
+    if (!result.success) {
+      fastify.log.error('Migration failed - service startup aborted');
+      throw result.error || new Error('Migration failed');
+    }
+
+    if (result.migrations && result.migrations.length > 0) {
+      fastify.log.info({
+        msg: 'Database migrations completed',
+        count: result.migrations.length,
+        migrations: result.migrations,
+      });
+    }
+  } else {
+    fastify.log.warn(
+      'AUTO_MIGRATE=false - Skipping automatic migrations. ' +
+      'Run "npm run migrate:latest" manually to apply pending migrations.'
+    );
   }
 
   fastify.decorate('db', db);

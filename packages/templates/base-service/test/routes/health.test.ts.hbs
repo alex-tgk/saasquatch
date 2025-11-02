@@ -1,0 +1,125 @@
+{{#if service.features.healthChecks}}import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { FastifyInstance } from 'fastify';
+import {
+  setupTestEnvironment,
+  teardownTestEnvironment,
+  TestContext,
+} from '../helpers/test-helpers.js';
+
+describe('Health Check Routes', () => {
+  let context: TestContext;
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    context = await setupTestEnvironment();
+    app = context.app;
+  });
+
+  afterAll(async () => {
+    await teardownTestEnvironment(context);
+  });
+
+  describe('GET /health', () => {
+    it('should return 200 and healthy status', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('status');
+      expect(body.status).toBe('healthy');
+      expect(body).toHaveProperty('timestamp');
+      expect(body).toHaveProperty('uptime');
+    });
+
+    it('should return valid timestamp', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      const body = JSON.parse(response.body);
+      const timestamp = new Date(body.timestamp);
+
+      expect(timestamp.getTime()).toBeGreaterThan(0);
+      expect(Math.abs(Date.now() - timestamp.getTime())).toBeLessThan(5000); // Within 5 seconds
+    });
+
+    it('should return uptime in seconds', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/health',
+      });
+
+      const body = JSON.parse(response.body);
+      expect(typeof body.uptime).toBe('number');
+      expect(body.uptime).toBeGreaterThanOrEqual(0);
+    });
+  });
+
+  describe('GET /ready', () => {
+    it('should return 200 and ready status', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/ready',
+      });
+
+      expect(response.statusCode).toBe(200);
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('status');
+      expect(body.status).toBe('ready');
+    });
+
+    it('should include dependency checks', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/ready',
+      });
+
+      const body = JSON.parse(response.body);
+      expect(body).toHaveProperty('checks');
+      expect(typeof body.checks).toBe('object');
+    });
+
+    {{#if service.features.database}}it('should check database connectivity', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/ready',
+      });
+
+      const body = JSON.parse(response.body);
+      expect(body.checks).toHaveProperty('database');
+      expect(body.checks.database).toBe('connected');
+    });
+    {{/if}}
+
+    {{#if service.features.cache}}it('should check Redis connectivity', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/ready',
+      });
+
+      const body = JSON.parse(response.body);
+      expect(body.checks).toHaveProperty('redis');
+      expect(body.checks.redis).toBe('connected');
+    });
+    {{/if}}
+
+    {{#if service.features.messageQueue}}it('should check NATS connectivity', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/ready',
+      });
+
+      const body = JSON.parse(response.body);
+      expect(body.checks).toHaveProperty('nats');
+      expect(body.checks.nats).toBe('connected');
+    });
+    {{/if}}
+  });
+});
+{{/if}}
