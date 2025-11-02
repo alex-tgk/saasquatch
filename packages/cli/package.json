@@ -6,7 +6,8 @@
   "author": "SaaSQuatch Team",
   "license": "MIT",
   "bin": {
-    "saasquatch": "./dist/cli.js"
+    "saasquatch": "./dist/cli.js",
+    "sq": "./dist/cli.js"
   },
   "files": [
     "dist",

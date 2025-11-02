@@ -43,7 +43,7 @@ pnpm -r build
 
 ### Setup Global CLI (Recommended)
 
-Make `saasquatch` available globally on your system:
+Make `saasquatch` (or shorter `sq`) available globally on your system:
 
 ```bash
 # From project root
@@ -63,6 +63,9 @@ cd ../..
 ```bash
 # Use from anywhere
 saasquatch init my-awesome-project
+
+# Or use the shorter alias
+sq init my-awesome-project
 ```
 
 **Option 2: Development Mode (With Live Reload)**
@@ -188,10 +191,13 @@ pnpm lint
 # From project root
 ./scripts/setup-global-cli.sh
 
-# Then use from anywhere
+# Then use from anywhere with either command
 saasquatch init my-project
-saasquatch --help
-saasquatch --version
+sq init my-project  # Shorter alias
+
+# Both work for all commands
+sq --help
+sq --version
 ```
 
 ### Generate a Test Project
@@ -347,7 +353,9 @@ See `.claude/docs/` for MCP server recommendations and quick start guides.
 ### Interactive Project Generation
 
 ```bash
+# Use either command
 saasquatch init my-project
+sq init my-project  # Shorter alias
 
 # Prompts for:
 # - Project name and description
