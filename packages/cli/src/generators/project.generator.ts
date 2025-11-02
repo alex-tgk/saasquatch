@@ -434,8 +434,9 @@ MIT
       );
     }
 
-    // Generate auth routes
-    if (service.features.authentication || service.features.jwt) {
+    // Generate auth routes (only for JWT authentication services)
+    // Note: authentication=true means "validate tokens", jwt=true means "handle authentication"
+    if (service.features.jwt) {
       await this.renderer.renderToFile(
         'base-service/src/routes/auth.ts.hbs',
         path.join(serviceDir, 'src/routes/auth.ts'),
@@ -513,8 +514,8 @@ MIT
       context
     );
 
-    // Generate auth tests
-    if (service.features.authentication || service.features.jwt) {
+    // Generate auth tests (only for JWT authentication services)
+    if (service.features.jwt) {
       await this.renderer.renderToFile(
         'base-service/test/routes/auth.test.ts.hbs',
         path.join(serviceDir, 'test/routes/auth.test.ts'),

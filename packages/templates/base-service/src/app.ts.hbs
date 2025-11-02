@@ -8,7 +8,7 @@ import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{/if}}{{#if service.features.compression}}import compress from '@fastify/compress';
 {{/if}}import metricsPlugin from './plugins/metrics.js';
 {{#if service.features.healthChecks}}import { healthRoutes } from './routes/health.js';
-{{/if}}{{#if (or service.features.authentication service.features.jwt)}}import { authRoutes } from './routes/auth.js';
+{{/if}}{{#if service.features.jwt}}import { authRoutes } from './routes/auth.js';
 {{/if}}{{#if service.features.database}}import { databasePlugin } from './plugins/database.js';
 {{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
 {{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
@@ -59,7 +59,7 @@ export async function buildApp(opts = {}) {
 
   {{/if}}// Register routes
   {{#if service.features.healthChecks}}await app.register(healthRoutes);
-  {{/if}}{{#if (or service.features.authentication service.features.jwt)}}await app.register(authRoutes);
+  {{/if}}{{#if service.features.jwt}}await app.register(authRoutes);
 
   {{/if}}// Service discovery endpoint for dynamic port discovery
   app.get('/discovery', async (request, reply) => {
