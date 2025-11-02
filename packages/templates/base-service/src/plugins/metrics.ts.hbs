@@ -1,0 +1,157 @@
+import { FastifyPluginAsync } from 'fastify';
+import fastifyPlugin from 'fastify-plugin';
+import metricsPlugin from 'fastify-metrics';
+
+/**
+ * Metrics Plugin
+ *
+ * Provides real-time performance metrics using Prometheus format.
+ *
+ * Features:
+ * - HTTP request metrics (count, duration, status codes)
+ * - System metrics (memory, CPU, event loop lag)
+ * - Prometheus-compatible format
+ *
+ * Endpoints:
+ * - GET /metrics - Prometheus metrics (raw format)
+ * - GET /metrics/json - JSON metrics for dashboard
+ *
+ * Usage:
+ * - Prometheus scrapes /metrics endpoint
+ * - Dashboard calls /metrics/json for UI
+ */
+
+// Metrics data structure for JSON endpoint
+interface MetricsData {
+  requests: {
+    total: number;
+    success: number;
+    error: number;
+    rps: number;
+  };
+  latency: {
+    p50: number;
+    p95: number;
+    p99: number;
+    avg: number;
+  };
+  system: {
+    cpu: {
+      usage: number;
+      percentage: number;
+    };
+    memory: {
+      used: number;
+      total: number;
+      percentage: number;
+    };
+  };
+  uptime: number;
+  timestamp: string;
+}
+
+const metricsPluginAsync: FastifyPluginAsync = async (fastify) => {
+  // Register Prometheus metrics plugin
+  await fastify.register(metricsPlugin, {
+    defaultMetrics: { enabled: true },
+    endpoint: '/metrics',
+    name: 'metrics',
+    routeMetrics: {
+      enabled: true,
+      groupStatusCodes: true, // Group 2xx, 3xx, 4xx, 5xx
+    },
+  });
+
+  // JSON metrics endpoint for dashboard
+  fastify.get('/metrics/json', async (request, reply) => {
+    try {
+      // Get metrics from prom-client registry
+      const metricsText = await fastify.metrics.client.register.metrics();
+
+      // Parse Prometheus metrics text format
+      const lines = metricsText.split('\n').filter(line => !line.startsWith('#') && line.trim());
+
+      // Extract HTTP request count and latency metrics
+      let totalRequests = 0;
+      let successRequests = 0;
+      let errorRequests = 0;
+      const latencies: number[] = [];
+
+      // Parse metrics (simple extraction)
+      for (const line of lines) {
+        if (line.includes('http_request_duration_seconds_count')) {
+          const match = line.match(/}\s+(\d+)/);
+          if (match) {
+            const count = parseInt(match[1]);
+            totalRequests += count;
+
+            // Check status code label for success/error
+            if (line.includes('status_code="2') || line.includes('status_code="3')) {
+              successRequests += count;
+            } else if (line.includes('status_code="4') || line.includes('status_code="5')) {
+              errorRequests += count;
+            }
+          }
+        }
+        // Extract latency values from summary
+        if (line.includes('http_request_summary_seconds{quantile=')) {
+          const match = line.match(/quantile="([\d.]+)".*}\s+([\d.]+)/);
+          if (match) {
+            latencies.push(parseFloat(match[2]) * 1000); // Convert to ms
+          }
+        }
+      }
+
+      // Get system metrics
+      const memoryUsage = process.memoryUsage();
+      const cpuUsage = process.cpuUsage();
+      const totalCpuTime = cpuUsage.user + cpuUsage.system;
+      const cpuPercentage = (totalCpuTime / 1000000 / process.uptime()) * 100;
+
+      // Simple RPS calculation (total requests / uptime)
+      const uptime = process.uptime();
+      const rps = uptime > 0 ? Math.round(totalRequests / uptime) : 0;
+
+      const metrics: MetricsData = {
+        requests: {
+          total: totalRequests,
+          success: successRequests,
+          error: errorRequests,
+          rps,
+        },
+        latency: {
+          p50: latencies[0] || 0,
+          p95: latencies[2] || 0,
+          p99: latencies[3] || 0,
+          avg: latencies.length > 0
+            ? latencies.reduce((a, b) => a + b, 0) / latencies.length
+            : 0,
+        },
+        system: {
+          cpu: {
+            usage: totalCpuTime,
+            percentage: Math.round(cpuPercentage * 100) / 100,
+          },
+          memory: {
+            used: memoryUsage.heapUsed,
+            total: memoryUsage.heapTotal,
+            percentage: Math.round((memoryUsage.heapUsed / memoryUsage.heapTotal) * 100 * 100) / 100,
+          },
+        },
+        uptime: Math.floor(uptime),
+        timestamp: new Date().toISOString(),
+      };
+
+      return metrics;
+    } catch (error) {
+      fastify.log.error(error, 'Error generating JSON metrics');
+      throw error;
+    }
+  });
+
+  fastify.log.info('Metrics plugin registered - endpoints: /metrics (Prometheus), /metrics/json (Dashboard)');
+};
+
+export default fastifyPlugin(metricsPluginAsync, {
+  name: 'metrics-plugin',
+});

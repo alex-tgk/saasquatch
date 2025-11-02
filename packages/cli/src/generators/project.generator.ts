@@ -418,6 +418,13 @@ MIT
       );
     }
 
+    // Generate metrics plugin (always included for all services)
+    await this.renderer.renderToFile(
+      'base-service/src/plugins/metrics.ts.hbs',
+      path.join(serviceDir, 'src/plugins/metrics.ts'),
+      context
+    );
+
     // Generate health check routes
     if (service.features.healthChecks) {
       await this.renderer.renderToFile(

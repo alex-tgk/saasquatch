@@ -11,7 +11,7 @@
     "start": "node dist/index.js",
     "test": "jest",
     "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",{{#if service.features.database}}
+    "test:coverage": "jest --coverage"{{#if service.features.database}},
     "migrate:make": "knex migrate:make --knexfile knexfile.ts -x ts",
     "migrate:latest": "knex migrate:latest --knexfile knexfile.ts",
     "migrate:rollback": "knex migrate:rollback --knexfile knexfile.ts",
@@ -32,6 +32,7 @@
     "@fastify/env": "^4.3.0",
     "@fastify/swagger": "^8.13.0",
     "@fastify/swagger-ui": "^2.1.0",
+    "fastify-metrics": "^11.0.0",
     "pino": "^8.17.2",
     "pino-pretty": "^10.3.1",
     "get-port": "^7.0.0"{{#if service.features.database}},

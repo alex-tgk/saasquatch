@@ -111,3 +111,5 @@ generated-projects/
 .test-output/
 packages/cli/.test-output/
 
+test-metrics-project/
+infrastructure/docker/postgres-data/

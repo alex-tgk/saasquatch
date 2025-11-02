@@ -20,32 +20,23 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // In production, fetch real metrics from service or monitoring system
-    // For now, return mock data
-    const metrics = {
-      cpu: {
-        usage: Math.random() * 4000000000,
-        percentage: Math.random() * 100,
+    // Fetch real metrics from the service's /metrics/json endpoint
+    const metricsUrl = `${service.url}/metrics/json`
+
+    const response = await fetch(metricsUrl, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
       },
-      memory: {
-        used: Math.random() * 2000000000,
-        total: 4000000000,
-        percentage: Math.random() * 100,
-      },
-      requests: {
-        total: Math.floor(Math.random() * 100000),
-        success: Math.floor(Math.random() * 95000),
-        error: Math.floor(Math.random() * 5000),
-        rps: Math.floor(Math.random() * 1000),
-      },
-      latency: {
-        p50: Math.random() * 50,
-        p95: Math.random() * 150,
-        p99: Math.random() * 300,
-      },
-      timestamp: new Date().toISOString(),
+      // Add timeout to prevent hanging
+      signal: AbortSignal.timeout(5000), // 5 second timeout
+    })
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch metrics from ${service.name}: ${response.statusText}`)
     }
 
+    const metrics = await response.json()
     return NextResponse.json(metrics)
   } catch (error) {
     return NextResponse.json(
