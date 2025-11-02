@@ -339,6 +339,13 @@ MIT
       'test',
       'test/unit',
       'test/integration',
+      'test/routes',
+      'test/helpers',
+      'test/fixtures',
+      'migrations',
+      'docs',
+      'docs/diagrams',
+      'docs/examples',
     ];
 
     for (const dir of serviceDirs) {
@@ -442,6 +449,142 @@ MIT
       path.join(serviceDir, 'tsconfig.json'),
       context
     );
+
+    // Generate environment configuration
+    await this.renderer.renderToFile(
+      'base-service/.env.example.hbs',
+      path.join(serviceDir, '.env.example'),
+      context
+    );
+
+    // Generate gitignore
+    await this.renderer.renderToFile(
+      'base-service/.gitignore.hbs',
+      path.join(serviceDir, '.gitignore'),
+      context
+    );
+
+    // Generate Jest configuration
+    await this.renderer.renderToFile(
+      'base-service/jest.config.js.hbs',
+      path.join(serviceDir, 'jest.config.js'),
+      context
+    );
+
+    // Generate test setup
+    await this.renderer.renderToFile(
+      'base-service/test/setup.ts.hbs',
+      path.join(serviceDir, 'test/setup.ts'),
+      context
+    );
+
+    // Generate test README
+    await this.renderer.renderToFile(
+      'base-service/test/README.md.hbs',
+      path.join(serviceDir, 'test/README.md'),
+      context
+    );
+
+    // Generate coverage documentation
+    await this.renderer.renderToFile(
+      'base-service/test/COVERAGE.md.hbs',
+      path.join(serviceDir, 'test/COVERAGE.md'),
+      context
+    );
+
+    // Generate test helpers
+    await this.renderer.renderToFile(
+      'base-service/test/helpers/test-helpers.ts.hbs',
+      path.join(serviceDir, 'test/helpers/test-helpers.ts'),
+      context
+    );
+
+    // Generate test fixtures
+    await this.renderer.renderToFile(
+      'base-service/test/fixtures/users.ts.hbs',
+      path.join(serviceDir, 'test/fixtures/users.ts'),
+      context
+    );
+
+    // Generate auth tests
+    if (service.features.authentication || service.features.jwt) {
+      await this.renderer.renderToFile(
+        'base-service/test/routes/auth.test.ts.hbs',
+        path.join(serviceDir, 'test/routes/auth.test.ts'),
+        context
+      );
+    }
+
+    // Generate health check tests
+    if (service.features.healthChecks) {
+      await this.renderer.renderToFile(
+        'base-service/test/routes/health.test.ts.hbs',
+        path.join(serviceDir, 'test/routes/health.test.ts'),
+        context
+      );
+    }
+
+    // Generate database migrations and utilities
+    if (service.features.database) {
+      // Generate knexfile
+      await this.renderer.renderToFile(
+        'base-service/knexfile.ts.hbs',
+        path.join(serviceDir, 'knexfile.ts'),
+        context
+      );
+
+      // Generate migration utilities
+      await this.renderer.renderToFile(
+        'base-service/src/utils/migrate.ts.hbs',
+        path.join(serviceDir, 'src/utils/migrate.ts'),
+        context
+      );
+
+      // Generate users table migration
+      await this.renderer.renderToFile(
+        'base-service/migrations/001_create_users_table.ts.hbs',
+        path.join(serviceDir, 'migrations/001_create_users_table.ts'),
+        context
+      );
+
+      // Generate migrations README
+      await this.renderer.renderToFile(
+        'base-service/migrations/README.md.hbs',
+        path.join(serviceDir, 'migrations/README.md'),
+        context
+      );
+    }
+
+    // Generate NATS event utilities and documentation
+    if (service.features.messageQueue) {
+      // Generate event utilities
+      await this.renderer.renderToFile(
+        'base-service/src/utils/events.ts.hbs',
+        path.join(serviceDir, 'src/utils/events.ts'),
+        context
+      );
+
+      // Generate event documentation
+      await this.renderer.renderToFile(
+        'base-service/docs/EVENTS.md.hbs',
+        path.join(serviceDir, 'docs/EVENTS.md'),
+        context
+      );
+
+      // Generate event flow diagrams
+      await this.renderer.renderToFile(
+        'base-service/docs/diagrams/event-flow.md',
+        path.join(serviceDir, 'docs/diagrams/event-flow.md'),
+        context
+      );
+
+      // Generate event subscriber example
+      await this.renderer.renderToFile(
+        'base-service/docs/examples/event-subscriber.ts.example',
+        path.join(serviceDir, 'docs/examples/event-subscriber.ts.example'),
+        context
+      );
+    }
   }
 
   // Legacy method - kept for backwards compatibility but now uses templates
