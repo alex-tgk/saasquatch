@@ -1,0 +1,1307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SaaSQuatch Brand Guidelines v1.0</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            /* Brand Colors */
+            --steel-blue-900: #0F172A;
+            --steel-blue-800: #1E293B;
+            --steel-blue-700: #334155;
+            --steel-blue-600: #475569;
+            --steel-blue-500: #64748B;
+            --steel-blue-400: #94A3B8;
+            --steel-blue-300: #CBD5E1;
+            --steel-blue-200: #E2E8F0;
+            --steel-blue-100: #F1F5F9;
+            --steel-blue-50: #F8FAFC;
+
+            --royal-blue-800: #1E40AF;
+            --royal-blue-700: #1D4ED8;
+            --royal-blue-600: #2563EB;
+            --royal-blue-500: #3B82F6;
+
+            --violet-600: #7C3AED;
+            --violet-500: #8B5CF6;
+
+            --emerald-600: #059669;
+            --emerald-500: #10B981;
+
+            --amber-600: #D97706;
+            --amber-500: #F59E0B;
+
+            --red-600: #DC2626;
+            --red-500: #EF4444;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 16px;
+            line-height: 1.6;
+            color: var(--steel-blue-800);
+            background: white;
+        }
+
+        .page {
+            max-width: 8.5in;
+            margin: 0 auto;
+            padding: 0.75in;
+            min-height: 11in;
+            page-break-after: always;
+            background: white;
+        }
+
+        .page:last-child {
+            page-break-after: auto;
+        }
+
+        /* Cover Page */
+        .cover {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 9.5in;
+            background: linear-gradient(135deg, var(--steel-blue-900) 0%, var(--steel-blue-700) 50%, var(--royal-blue-700) 100%);
+            color: white;
+            padding: 2in 1in;
+        }
+
+        .cover-header {
+            text-align: center;
+        }
+
+        .cover-logo {
+            font-size: 72px;
+            font-weight: 800;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.5in;
+            background: linear-gradient(135deg, white, var(--steel-blue-200));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .cover-title {
+            font-size: 48px;
+            font-weight: 700;
+            margin-bottom: 0.25in;
+            letter-spacing: -0.01em;
+        }
+
+        .cover-subtitle {
+            font-size: 24px;
+            font-weight: 400;
+            color: var(--steel-blue-200);
+            margin-bottom: 1in;
+        }
+
+        .cover-tagline {
+            font-size: 32px;
+            font-weight: 600;
+            text-align: center;
+            padding: 0.5in;
+            border-top: 2px solid rgba(255, 255, 255, 0.2);
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .cover-footer {
+            text-align: center;
+            color: var(--steel-blue-300);
+            font-size: 14px;
+        }
+
+        /* Typography */
+        h1 {
+            font-size: 36px;
+            font-weight: 700;
+            color: var(--steel-blue-900);
+            margin-bottom: 0.5in;
+            letter-spacing: -0.01em;
+            border-bottom: 3px solid var(--royal-blue-600);
+            padding-bottom: 0.2in;
+        }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 600;
+            color: var(--steel-blue-800);
+            margin-top: 0.4in;
+            margin-bottom: 0.2in;
+            letter-spacing: -0.01em;
+        }
+
+        h3 {
+            font-size: 20px;
+            font-weight: 600;
+            color: var(--steel-blue-700);
+            margin-top: 0.3in;
+            margin-bottom: 0.15in;
+        }
+
+        h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--steel-blue-700);
+            margin-top: 0.2in;
+            margin-bottom: 0.1in;
+        }
+
+        p {
+            margin-bottom: 0.15in;
+            color: var(--steel-blue-700);
+        }
+
+        strong {
+            font-weight: 600;
+            color: var(--steel-blue-900);
+        }
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 14px;
+            background: var(--steel-blue-50);
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: var(--steel-blue-700);
+        }
+
+        pre {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 13px;
+            background: var(--steel-blue-900);
+            color: var(--steel-blue-100);
+            padding: 0.2in;
+            border-radius: 8px;
+            overflow-x: auto;
+            margin: 0.15in 0;
+            line-height: 1.5;
+        }
+
+        /* Color Swatches */
+        .color-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.2in;
+            margin: 0.2in 0;
+        }
+
+        .color-swatch {
+            text-align: center;
+        }
+
+        .color-box {
+            width: 100%;
+            height: 1.2in;
+            border-radius: 8px;
+            margin-bottom: 0.1in;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .color-name {
+            font-weight: 600;
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: var(--steel-blue-900);
+        }
+
+        .color-hex {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--steel-blue-600);
+        }
+
+        /* Tables */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 0.2in 0;
+            font-size: 14px;
+        }
+
+        th {
+            background: var(--steel-blue-700);
+            color: white;
+            padding: 12px;
+            text-align: left;
+            font-weight: 600;
+        }
+
+        td {
+            padding: 10px 12px;
+            border-bottom: 1px solid var(--steel-blue-200);
+        }
+
+        tr:hover {
+            background: var(--steel-blue-50);
+        }
+
+        /* Lists */
+        ul, ol {
+            margin-left: 0.3in;
+            margin-bottom: 0.15in;
+        }
+
+        li {
+            margin-bottom: 0.05in;
+            color: var(--steel-blue-700);
+        }
+
+        /* Callout Boxes */
+        .callout {
+            padding: 0.2in;
+            border-radius: 8px;
+            margin: 0.2in 0;
+            border-left: 4px solid;
+        }
+
+        .callout-primary {
+            background: #EFF6FF;
+            border-color: var(--royal-blue-600);
+        }
+
+        .callout-success {
+            background: #ECFDF5;
+            border-color: var(--emerald-500);
+        }
+
+        .callout-warning {
+            background: #FEF3C7;
+            border-color: var(--amber-500);
+        }
+
+        .callout-title {
+            font-weight: 600;
+            margin-bottom: 0.05in;
+            color: var(--steel-blue-900);
+        }
+
+        /* Badges */
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-right: 8px;
+            margin-bottom: 4px;
+        }
+
+        .badge-primary {
+            background: var(--royal-blue-600);
+            color: white;
+        }
+
+        .badge-secondary {
+            background: var(--steel-blue-600);
+            color: white;
+        }
+
+        .badge-success {
+            background: var(--emerald-500);
+            color: white;
+        }
+
+        /* Typography Examples */
+        .type-example {
+            padding: 0.15in;
+            background: white;
+            border: 1px solid var(--steel-blue-200);
+            border-radius: 8px;
+            margin: 0.15in 0;
+        }
+
+        .type-sample {
+            margin-bottom: 0.05in;
+        }
+
+        .type-spec {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--steel-blue-500);
+            margin-top: 0.05in;
+        }
+
+        /* Logo Display */
+        .logo-display {
+            text-align: center;
+            padding: 0.4in;
+            background: var(--steel-blue-50);
+            border-radius: 8px;
+            margin: 0.2in 0;
+        }
+
+        .logo-text {
+            font-size: 48px;
+            font-weight: 800;
+            color: var(--steel-blue-600);
+            letter-spacing: -0.02em;
+        }
+
+        /* Do/Don't Grid */
+        .do-dont-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.2in;
+            margin: 0.2in 0;
+        }
+
+        .do-box, .dont-box {
+            padding: 0.2in;
+            border-radius: 8px;
+        }
+
+        .do-box {
+            background: #ECFDF5;
+            border: 2px solid var(--emerald-500);
+        }
+
+        .dont-box {
+            background: #FEE2E2;
+            border: 2px solid var(--red-500);
+        }
+
+        .do-title, .dont-title {
+            font-weight: 700;
+            font-size: 14px;
+            margin-bottom: 0.1in;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .do-title {
+            color: var(--emerald-600);
+        }
+
+        .dont-title {
+            color: var(--red-600);
+        }
+
+        /* Print Styles */
+        @media print {
+            .page {
+                page-break-after: always;
+                margin: 0;
+                padding: 0.75in;
+            }
+
+            .page:last-child {
+                page-break-after: auto;
+            }
+
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+
+        .section-header {
+            background: var(--steel-blue-900);
+            color: white;
+            padding: 0.3in;
+            margin: -0.75in -0.75in 0.4in -0.75in;
+            border-radius: 0;
+        }
+
+        .section-header h1 {
+            color: white;
+            border: none;
+            margin: 0;
+            padding: 0;
+        }
+
+        .footer-note {
+            margin-top: 0.4in;
+            padding-top: 0.2in;
+            border-top: 1px solid var(--steel-blue-200);
+            font-size: 12px;
+            color: var(--steel-blue-500);
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Cover Page -->
+    <div class="page cover">
+        <div class="cover-header">
+            <div class="cover-logo">SaaSQuatch</div>
+            <div class="cover-title">Brand Guidelines</div>
+            <div class="cover-subtitle">Version 1.0 | November 2025</div>
+        </div>
+
+        <div class="cover-tagline">
+            Enterprise-Grade Microservices<br>for Ambitious Teams
+        </div>
+
+        <div class="cover-footer">
+            <p>© 2025 SaaSQuatch. All rights reserved.</p>
+            <p style="margin-top: 0.1in; font-size: 12px;">This document contains proprietary brand guidelines.</p>
+        </div>
+    </div>
+
+    <!-- Table of Contents -->
+    <div class="page">
+        <h1>Table of Contents</h1>
+
+        <table>
+            <tr>
+                <td><strong>1. Brand Overview</strong></td>
+                <td>Page 3</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Brand Positioning</td>
+                <td>3</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Brand Personality</td>
+                <td>3</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Target Audience</td>
+                <td>3</td>
+            </tr>
+            <tr>
+                <td><strong>2. Visual Identity</strong></td>
+                <td>Page 4</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Color Palette</td>
+                <td>4</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Typography</td>
+                <td>5</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Logo & Brand Marks</td>
+                <td>6</td>
+            </tr>
+            <tr>
+                <td><strong>3. Design System</strong></td>
+                <td>Page 7</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;UI Components</td>
+                <td>7</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Iconography</td>
+                <td>8</td>
+            </tr>
+            <tr>
+                <td><strong>4. Content & Messaging</strong></td>
+                <td>Page 9</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Voice & Tone</td>
+                <td>9</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Key Messages</td>
+                <td>9</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Writing Guidelines</td>
+                <td>10</td>
+            </tr>
+            <tr>
+                <td><strong>5. Brand Applications</strong></td>
+                <td>Page 11</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Do's and Don'ts</td>
+                <td>11</td>
+            </tr>
+            <tr>
+                <td>&nbsp;&nbsp;&nbsp;Usage Examples</td>
+                <td>12</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- Page 1: Brand Overview -->
+    <div class="page">
+        <div class="section-header">
+            <h1>1. Brand Overview</h1>
+        </div>
+
+        <h2>Brand Positioning</h2>
+        <div class="callout callout-primary">
+            <div class="callout-title">Core Positioning Statement</div>
+            <p style="font-size: 18px; font-weight: 500; margin-bottom: 0;">"Enterprise-Grade Tools for Ambitious Startups"</p>
+        </div>
+
+        <p>SaaSQuatch bridges the gap between quick scaffolding tools and enterprise frameworks. We believe startups deserve the same level of quality, security, and best practices as Fortune 500 companies—without the complexity, cost, or learning curve.</p>
+
+        <h3>Brand Promise</h3>
+        <p><strong>Complete. Powerful. Approachable.</strong></p>
+        <ul>
+            <li><strong>Complete</strong>: Everything you need, nothing you don't. Full-stack microservices architecture out of the box.</li>
+            <li><strong>Powerful</strong>: Enterprise-grade patterns, security, and scalability built-in from day one.</li>
+            <li><strong>Approachable</strong>: Clear documentation, helpful errors, and smart defaults that guide you to success.</li>
+        </ul>
+
+        <h2>Brand Personality</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.2in; margin: 0.2in 0;">
+            <div>
+                <h4>Primary Traits</h4>
+                <ul>
+                    <li><strong>Professional</strong> - Trustworthy, reliable</li>
+                    <li><strong>Empowering</strong> - Guidance, not gatekeeping</li>
+                    <li><strong>Comprehensive</strong> - Batteries-included</li>
+                    <li><strong>Modern</strong> - Current best practices</li>
+                </ul>
+            </div>
+            <div>
+                <h4>Brand Archetype</h4>
+                <div class="callout callout-success">
+                    <p><strong>The Mentor</strong></p>
+                    <p style="font-size: 14px; margin: 0;">Experienced, knowledgeable, and supportive. We're here to help you avoid pitfalls and follow the proven path.</p>
+                </div>
+            </div>
+        </div>
+
+        <h2>Target Audience</h2>
+
+        <h3>Primary: Startups & Small Teams (2-10 developers)</h3>
+        <p><strong>Profile</strong>: Moving fast, need to ship features quickly. Care about quality but don't have time for extensive research. Want enterprise-level practices without enterprise complexity.</p>
+
+        <p><strong>Pain Points We Solve</strong>:</p>
+        <ul>
+            <li>"How do I structure a microservices app correctly?"</li>
+            <li>"What are the production best practices for Fastify?"</li>
+            <li>"How do I set up multi-tenancy properly?"</li>
+        </ul>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 1
+        </div>
+    </div>
+
+    <!-- Page 2: Color Palette -->
+    <div class="page">
+        <div class="section-header">
+            <h1>2. Visual Identity - Colors</h1>
+        </div>
+
+        <h2>Primary Color Palette</h2>
+
+        <h3>Steel Blue - Primary Brand Color</h3>
+        <div class="color-grid">
+            <div class="color-swatch">
+                <div class="color-box" style="background: #475569;"></div>
+                <div class="color-name">Steel Blue 600</div>
+                <div class="color-hex">#475569</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #334155;"></div>
+                <div class="color-name">Steel Blue 700</div>
+                <div class="color-hex">#334155</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #1E293B;"></div>
+                <div class="color-name">Steel Blue 800</div>
+                <div class="color-hex">#1E293B</div>
+            </div>
+        </div>
+
+        <p><strong>Usage</strong>: Headers, primary buttons, brand elements, logos, key UI components</p>
+
+        <h3>Royal Blue - Accent Color</h3>
+        <div class="color-grid">
+            <div class="color-swatch">
+                <div class="color-box" style="background: #3B82F6;"></div>
+                <div class="color-name">Royal Blue 500</div>
+                <div class="color-hex">#3B82F6</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #2563EB;"></div>
+                <div class="color-name">Royal Blue 600</div>
+                <div class="color-hex">#2563EB</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #1D4ED8;"></div>
+                <div class="color-name">Royal Blue 700</div>
+                <div class="color-hex">#1D4ED8</div>
+            </div>
+        </div>
+
+        <p><strong>Usage</strong>: Links, call-to-action buttons, interactive elements, highlights</p>
+
+        <h2>Neutral Colors</h2>
+
+        <div class="color-grid">
+            <div class="color-swatch">
+                <div class="color-box" style="background: #F8FAFC; border: 1px solid #E2E8F0;"></div>
+                <div class="color-name">Slate 50</div>
+                <div class="color-hex">#F8FAFC</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #E2E8F0;"></div>
+                <div class="color-name">Slate 200</div>
+                <div class="color-hex">#E2E8F0</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #64748B;"></div>
+                <div class="color-name">Slate 500</div>
+                <div class="color-hex">#64748B</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #475569;"></div>
+                <div class="color-name">Slate 600</div>
+                <div class="color-hex">#475569</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #334155;"></div>
+                <div class="color-name">Slate 700</div>
+                <div class="color-hex">#334155</div>
+            </div>
+            <div class="color-swatch">
+                <div class="color-box" style="background: #0F172A;"></div>
+                <div class="color-name">Slate 900</div>
+                <div class="color-hex">#0F172A</div>
+            </div>
+        </div>
+
+        <h2>Semantic Colors</h2>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Purpose</th>
+                    <th>Color</th>
+                    <th>Hex Code</th>
+                    <th>Usage</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Success</strong></td>
+                    <td><div style="width: 30px; height: 20px; background: #10B981; border-radius: 4px;"></div></td>
+                    <td><code>#10B981</code></td>
+                    <td>Confirmations, success states</td>
+                </tr>
+                <tr>
+                    <td><strong>Warning</strong></td>
+                    <td><div style="width: 30px; height: 20px; background: #F59E0B; border-radius: 4px;"></div></td>
+                    <td><code>#F59E0B</code></td>
+                    <td>Cautions, important notices</td>
+                </tr>
+                <tr>
+                    <td><strong>Error</strong></td>
+                    <td><div style="width: 30px; height: 20px; background: #EF4444; border-radius: 4px;"></div></td>
+                    <td><code>#EF4444</code></td>
+                    <td>Errors, destructive actions</td>
+                </tr>
+                <tr>
+                    <td><strong>Info</strong></td>
+                    <td><div style="width: 30px; height: 20px; background: #0EA5E9; border-radius: 4px;"></div></td>
+                    <td><code>#0EA5E9</code></td>
+                    <td>Information, helpful tips</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 2
+        </div>
+    </div>
+
+    <!-- Page 3: Typography -->
+    <div class="page">
+        <div class="section-header">
+            <h1>2. Visual Identity - Typography</h1>
+        </div>
+
+        <h2>Font Families</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.3in; margin: 0.2in 0;">
+            <div>
+                <h3 style="font-family: 'Inter', sans-serif; font-size: 32px; margin-bottom: 0.1in;">Inter</h3>
+                <p><strong>Primary Font</strong> - UI & Content</p>
+                <p style="font-size: 14px;">Modern, professional, excellent readability. Used for headings, body text, UI elements, and marketing copy.</p>
+                <p style="font-size: 14px;"><strong>Weights</strong>: 400 (Regular), 500 (Medium), 600 (SemiBold), 700 (Bold), 800 (ExtraBold)</p>
+            </div>
+            <div>
+                <h3 style="font-family: 'JetBrains Mono', monospace; font-size: 28px; margin-bottom: 0.1in;">JetBrains Mono</h3>
+                <p><strong>Secondary Font</strong> - Code & Technical</p>
+                <p style="font-size: 14px;">Developer-focused, optimized for code. Used for code blocks, CLI output, and technical examples.</p>
+                <p style="font-size: 14px;"><strong>Weights</strong>: 400 (Regular), 500 (Medium), 600 (SemiBold)</p>
+            </div>
+        </div>
+
+        <h2>Type Scale Examples</h2>
+
+        <div class="type-example">
+            <div class="type-sample" style="font-size: 48px; font-weight: 700; line-height: 1.1; color: #0F172A;">
+                Display Heading
+            </div>
+            <div class="type-spec">Inter Bold 700 | 48px/3rem | Line Height: 1.1 | Letter Spacing: -0.02em</div>
+        </div>
+
+        <div class="type-example">
+            <div class="type-sample" style="font-size: 36px; font-weight: 700; line-height: 1.2; color: #0F172A;">
+                Page Title (H1)
+            </div>
+            <div class="type-spec">Inter Bold 700 | 36px/2.25rem | Line Height: 1.2 | Letter Spacing: -0.01em</div>
+        </div>
+
+        <div class="type-example">
+            <div class="type-sample" style="font-size: 30px; font-weight: 600; line-height: 1.3; color: #1E293B;">
+                Section Heading (H2)
+            </div>
+            <div class="type-spec">Inter SemiBold 600 | 30px/1.875rem | Line Height: 1.3</div>
+        </div>
+
+        <div class="type-example">
+            <div class="type-sample" style="font-size: 24px; font-weight: 600; line-height: 1.4; color: #1E293B;">
+                Subsection Heading (H3)
+            </div>
+            <div class="type-spec">Inter SemiBold 600 | 24px/1.5rem | Line Height: 1.4</div>
+        </div>
+
+        <div class="type-example">
+            <div class="type-sample" style="font-size: 18px; font-weight: 400; line-height: 1.6; color: #334155;">
+                Body text appears in this comfortable reading size with generous line height for optimal readability across all devices and platforms.
+            </div>
+            <div class="type-spec">Inter Regular 400 | 18px/1.125rem | Line Height: 1.6</div>
+        </div>
+
+        <div class="type-example">
+            <div class="type-sample" style="font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.6; background: #0F172A; color: #F1F5F9; padding: 12px; border-radius: 6px;">
+npx @saasquatch/cli init my-project
+cd my-project && pnpm dev
+            </div>
+            <div class="type-spec">JetBrains Mono Regular 400 | 14px/0.875rem | Line Height: 1.6</div>
+        </div>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 3
+        </div>
+    </div>
+
+    <!-- Page 4: Logo & Brand Marks -->
+    <div class="page">
+        <div class="section-header">
+            <h1>2. Visual Identity - Logo</h1>
+        </div>
+
+        <h2>Primary Logo</h2>
+
+        <div class="logo-display">
+            <div class="logo-text">SaaSQuatch</div>
+            <p style="margin-top: 0.2in; color: var(--steel-blue-600); font-size: 14px;">Primary Wordmark - Steel Blue 600</p>
+        </div>
+
+        <h3>Logo Specifications</h3>
+        <ul>
+            <li><strong>Minimum Size</strong>: 120px width for digital, 1 inch for print</li>
+            <li><strong>Clear Space</strong>: Equal to the height of the "S" on all sides</li>
+            <li><strong>Color Variants</strong>: Steel Blue 600 (light bg), White (dark bg), Monochrome</li>
+        </ul>
+
+        <h2>CLI/Terminal Logo</h2>
+        <pre style="font-size: 10px; line-height: 1.2; background: #0F172A; color: #F1F5F9; padding: 0.15in;">
+███████╗ █████╗  █████╗ ███████╗ ██████╗ ██╗   ██╗ █████╗ ████████╗ ██████╗██╗  ██╗
+██╔════╝██╔══██╗██╔══██╗██╔════╝██╔═══██╗██║   ██║██╔══██╗╚══██╔══╝██╔════╝██║  ██║
+███████╗███████║███████║███████╗██║   ██║██║   ██║███████║   ██║   ██║     ███████║
+╚════██║██╔══██║██╔══██║╚════██║██║▄▄ ██║██║   ██║██╔══██║   ██║   ██║     ██╔══██║
+███████║██║  ██║██║  ██║███████║╚██████╔╝╚██████╔╝██║  ██║   ██║   ╚██████╗██║  ██║
+╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝╚══════╝ ╚══▀▀═╝  ╚═════╝ ╚═╝  ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝
+</pre>
+
+        <h2>Logo Usage Guidelines</h2>
+
+        <div class="do-dont-grid">
+            <div class="do-box">
+                <div class="do-title">✓ DO</div>
+                <ul style="margin-left: 0.2in; font-size: 14px; margin-top: 0.1in;">
+                    <li>Use approved color variants</li>
+                    <li>Maintain clear space</li>
+                    <li>Keep proportions intact</li>
+                    <li>Use high-resolution files</li>
+                    <li>Place on appropriate backgrounds</li>
+                </ul>
+            </div>
+            <div class="dont-box">
+                <div class="dont-title">✗ DON'T</div>
+                <ul style="margin-left: 0.2in; font-size: 14px; margin-top: 0.1in;">
+                    <li>Stretch or distort the logo</li>
+                    <li>Change colors arbitrarily</li>
+                    <li>Add effects or shadows</li>
+                    <li>Place on busy backgrounds</li>
+                    <li>Use below minimum size</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>Icon/Symbol Mark</h2>
+        <p>For favicons, social media icons, and compact spaces:</p>
+        <div style="text-align: center; padding: 0.3in; background: var(--steel-blue-50); border-radius: 8px; margin: 0.15in 0;">
+            <div style="font-size: 64px; font-weight: 800; color: var(--steel-blue-600);">SQ</div>
+            <p style="font-size: 12px; color: var(--steel-blue-600); margin-top: 0.1in;">Monogram Mark - Minimum 32×32px</p>
+        </div>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 4
+        </div>
+    </div>
+
+    <!-- Page 5: UI Components -->
+    <div class="page">
+        <div class="section-header">
+            <h1>3. Design System - Components</h1>
+        </div>
+
+        <h2>Button Styles</h2>
+
+        <div style="display: flex; gap: 0.15in; margin: 0.2in 0; flex-wrap: wrap;">
+            <button style="background: #2563EB; color: white; padding: 12px 24px; border: none; border-radius: 8px; font-weight: 600; font-size: 16px; font-family: 'Inter', sans-serif; cursor: pointer;">
+                Primary Button
+            </button>
+            <button style="background: transparent; border: 2px solid #475569; color: #475569; padding: 10px 22px; border-radius: 8px; font-weight: 600; font-size: 16px; font-family: 'Inter', sans-serif; cursor: pointer;">
+                Secondary Button
+            </button>
+            <button style="background: transparent; border: none; color: #64748B; padding: 12px 24px; font-weight: 500; font-size: 16px; font-family: 'Inter', sans-serif; cursor: pointer;">
+                Ghost Button
+            </button>
+        </div>
+
+        <h2>Status Badges</h2>
+
+        <div style="margin: 0.2in 0;">
+            <span class="badge badge-primary">Primary</span>
+            <span class="badge badge-secondary">Secondary</span>
+            <span class="badge badge-success">Success</span>
+            <span class="badge" style="background: #F59E0B; color: white;">Warning</span>
+            <span class="badge" style="background: #EF4444; color: white;">Error</span>
+        </div>
+
+        <h2>Card Styles</h2>
+
+        <div style="background: white; border: 1px solid #E2E8F0; border-radius: 12px; padding: 0.3in; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1); margin: 0.2in 0;">
+            <h4 style="margin-top: 0;">Elevated Card</h4>
+            <p style="margin: 0; font-size: 14px; color: #64748B;">White background, subtle border, soft shadow. Used for primary content containers.</p>
+        </div>
+
+        <div style="background: #F8FAFC; border-radius: 8px; padding: 0.25in; margin: 0.2in 0;">
+            <h4 style="margin-top: 0;">Flat Card</h4>
+            <p style="margin: 0; font-size: 14px; color: #64748B;">Slate 50 background, no shadow. Used for secondary content or nested elements.</p>
+        </div>
+
+        <h2>Callout Boxes</h2>
+
+        <div class="callout callout-primary">
+            <div class="callout-title">Information Callout</div>
+            <p style="margin: 0; font-size: 14px;">Use for helpful tips, additional context, or important information that supports the main content.</p>
+        </div>
+
+        <div class="callout callout-success">
+            <div class="callout-title">Success Callout</div>
+            <p style="margin: 0; font-size: 14px;">Use for confirmations, achievements, or positive outcomes.</p>
+        </div>
+
+        <div class="callout callout-warning">
+            <div class="callout-title">Warning Callout</div>
+            <p style="margin: 0; font-size: 14px;">Use for cautions, important notices, or items requiring user attention.</p>
+        </div>
+
+        <h2>Code Block Styles</h2>
+
+        <p><strong>Dark Theme (Preferred for Examples)</strong></p>
+        <pre>// Example: Generate a new project
+npx @saasquatch/cli init my-project
+
+// Navigate and start development
+cd my-project
+pnpm dev</pre>
+
+        <p><strong>Inline Code</strong></p>
+        <p>Use <code>inline code</code> styling for short technical terms, commands, or variable names within paragraphs.</p>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 5
+        </div>
+    </div>
+
+    <!-- Page 6: Voice & Messaging -->
+    <div class="page">
+        <div class="section-header">
+            <h1>4. Content & Messaging</h1>
+        </div>
+
+        <h2>Voice & Tone</h2>
+
+        <div class="callout callout-primary">
+            <div class="callout-title">Brand Voice</div>
+            <p style="font-size: 16px; font-weight: 500; margin: 0;"><strong>Helpful & Guiding</strong> with <strong>Professional Authority</strong></p>
+        </div>
+
+        <p>Our voice is that of <strong>The Mentor</strong> - experienced, knowledgeable, and supportive. We help developers succeed without condescending or gatekeeping.</p>
+
+        <h3>Characteristics</h3>
+        <ul>
+            <li><strong>Clear and direct</strong>, not verbose</li>
+            <li><strong>Confident but not arrogant</strong></li>
+            <li><strong>Helpful without being condescending</strong></li>
+            <li><strong>Technical but accessible</strong></li>
+            <li><strong>Solution-focused</strong>, not problem-focused</li>
+        </ul>
+
+        <h2>Writing Style Examples</h2>
+
+        <div class="do-dont-grid">
+            <div class="do-box">
+                <div class="do-title">✓ DO SAY</div>
+                <p style="font-size: 13px; margin-top: 0.1in;">"Let's set up your production-ready auth service with JWT and best practices"</p>
+                <p style="font-size: 13px;">"We've included security validation to prevent common production mistakes"</p>
+                <p style="font-size: 13px;">"Generate a production-ready microservices architecture in under 2 minutes"</p>
+            </div>
+            <div class="dont-box">
+                <div class="dont-title">✗ DON'T SAY</div>
+                <p style="font-size: 13px; margin-top: 0.1in;">"Warning: You're doing it wrong!"</p>
+                <p style="font-size: 13px;">"This revolutionary tool will change everything!"</p>
+                <p style="font-size: 13px;">"Finally, a microservices tool that doesn't suck"</p>
+            </div>
+        </div>
+
+        <h2>Key Messages</h2>
+
+        <h3>1. Production-Ready from Day One</h3>
+        <ul>
+            <li>Built-in security validation prevents production mistakes</li>
+            <li>Best practices by default, full control when you need it</li>
+            <li>Enterprise patterns delivered at startup speed</li>
+        </ul>
+
+        <h3>2. Comprehensive & Complete</h3>
+        <ul>
+            <li>Auth, database, cache, message queue - all configured</li>
+            <li>Multi-tenancy, logging, health checks - included</li>
+            <li>Docker, migrations, tests - ready to go</li>
+        </ul>
+
+        <h3>3. Helpful, Not Helpless</h3>
+        <ul>
+            <li>Clear error messages with solutions, not just problems</li>
+            <li>Extensive documentation with real-world examples</li>
+            <li>Smart defaults that guide you to success</li>
+        </ul>
+
+        <h2>Tagline</h2>
+        <div style="text-align: center; padding: 0.3in; background: linear-gradient(135deg, #0F172A, #334155); color: white; border-radius: 12px; margin: 0.2in 0;">
+            <p style="font-size: 28px; font-weight: 700; letter-spacing: -0.01em; margin: 0;">
+                Enterprise-Grade Microservices<br>for Ambitious Teams
+            </p>
+        </div>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 6
+        </div>
+    </div>
+
+    <!-- Page 7: Brand Applications & Do's/Don'ts -->
+    <div class="page">
+        <div class="section-header">
+            <h1>5. Brand Applications</h1>
+        </div>
+
+        <h2>Content Guidelines</h2>
+
+        <h3>Writing Principles</h3>
+        <ol>
+            <li><strong>Clarity over cleverness</strong> - Say what you mean, directly</li>
+            <li><strong>Active voice</strong> - "SaaSQuatch generates..." not "Projects are generated..."</li>
+            <li><strong>Present tense</strong> - "The CLI creates..." not "The CLI will create..."</li>
+            <li><strong>Second person</strong> - "You can configure..." not "Developers can configure..."</li>
+            <li><strong>Specific over generic</strong> - "JWT authentication with @fastify/jwt" not "security features"</li>
+        </ol>
+
+        <h3>Error Message Structure</h3>
+        <p><strong>Format</strong>: Problem → Impact → Solution</p>
+
+        <div class="callout callout-primary">
+            <div class="callout-title">Example - Good Error Message</div>
+            <pre style="background: #1E293B; margin-top: 0.1in; font-size: 12px;">❌ JWT_SECRET not set
+
+Your app is using the default JWT secret,
+which isn't secure for production.
+
+Fix: Set the JWT_SECRET environment variable:
+export JWT_SECRET=$(openssl rand -base64 32)</pre>
+        </div>
+
+        <h2>Brand Do's and Don'ts</h2>
+
+        <div class="do-dont-grid">
+            <div class="do-box">
+                <div class="do-title">✓ DO</div>
+                <ul style="margin-left: 0.2in; font-size: 13px; margin-top: 0.1in;">
+                    <li>Use Steel Blue and Royal Blue as primary colors</li>
+                    <li>Maintain typography (Inter + JetBrains Mono)</li>
+                    <li>Use helpful, guiding language</li>
+                    <li>Show real code examples with syntax highlighting</li>
+                    <li>Emphasize production-readiness</li>
+                    <li>Provide clear, actionable error messages</li>
+                    <li>Use emoji sparingly (✓ ✗ 💡 🚀)</li>
+                    <li>Maintain white space and clean layouts</li>
+                </ul>
+            </div>
+            <div class="dont-box">
+                <div class="dont-title">✗ DON'T</div>
+                <ul style="margin-left: 0.2in; font-size: 13px; margin-top: 0.1in;">
+                    <li>Use bright or neon colors</li>
+                    <li>Mix too many font families</li>
+                    <li>Use condescending language</li>
+                    <li>Show incomplete code examples</li>
+                    <li>Overpromise ("revolutionary")</li>
+                    <li>Use angry or aggressive tone</li>
+                    <li>Overuse emojis</li>
+                    <li>Clutter interfaces</li>
+                </ul>
+            </div>
+        </div>
+
+        <h2>CLI Output Best Practices</h2>
+
+        <pre style="font-size: 12px;">$ saasquatch init my-project
+
+✓ Creating project structure
+✓ Installing dependencies (23 packages)
+✓ Generating auth service (port 3001)
+✓ Generating user service (port 3002)
+✓ Configuring infrastructure
+
+╔═══════════════════════════════════════╗
+║  🎉 Project created successfully!     ║
+╟───────────────────────────────────────╢
+║  Next steps:                          ║
+║  1. cd my-project                     ║
+║  2. Configure .env                    ║
+║  3. pnpm dev                          ║
+╚═══════════════════════════════════════╝</pre>
+
+        <p><strong>Key Elements</strong>:</p>
+        <ul>
+            <li>Use symbols for visual hierarchy (✓ ✗ ⚠ ℹ 💡)</li>
+            <li>Show progress for long operations</li>
+            <li>Provide clear next steps</li>
+            <li>Use color sparingly (green for success, red for errors)</li>
+        </ul>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 7
+        </div>
+    </div>
+
+    <!-- Page 8: Usage Examples -->
+    <div class="page">
+        <div class="section-header">
+            <h1>5. Brand Applications - Examples</h1>
+        </div>
+
+        <h2>Documentation Example</h2>
+
+        <div style="border: 2px solid #E2E8F0; border-radius: 8px; padding: 0.3in; background: white; margin: 0.2in 0;">
+            <h3 style="margin-top: 0; color: #0F172A;">Getting Started with SaaSQuatch</h3>
+            <p>Generate a production-ready microservices architecture in <strong>under 2 minutes</strong>.</p>
+
+            <h4>Quick Start</h4>
+            <pre style="font-size: 13px; margin: 0.15in 0;">npx @saasquatch/cli init my-project
+cd my-project
+pnpm dev</pre>
+
+            <p style="font-size: 14px;"><strong>✓ That's it!</strong> Your services are running with:</p>
+            <ul style="font-size: 14px; margin-left: 0.3in;">
+                <li>JWT authentication</li>
+                <li>PostgreSQL database</li>
+                <li>Redis cache</li>
+                <li>Health checks</li>
+            </ul>
+
+            <div class="callout callout-primary" style="font-size: 14px;">
+                <strong>💡 Tip:</strong> All services include security validation to prevent common production mistakes.
+            </div>
+        </div>
+
+        <h2>README Header Example</h2>
+
+        <div style="border: 2px solid #E2E8F0; border-radius: 8px; padding: 0.3in; background: white; text-align: center;">
+            <div style="font-size: 48px; font-weight: 800; color: #475569; margin-bottom: 0.15in;">SaaSQuatch</div>
+            <p style="font-size: 18px; font-weight: 500; color: #64748B; margin-bottom: 0.2in;">Enterprise-Grade Microservices for Ambitious Teams</p>
+
+            <div style="display: inline-flex; gap: 8px; flex-wrap: wrap; justify-content: center;">
+                <span class="badge badge-primary">npm version 1.0.0</span>
+                <span class="badge" style="background: #334155; color: white;">TypeScript 5.0+</span>
+                <span class="badge badge-success">MIT License</span>
+            </div>
+        </div>
+
+        <h2>Marketing Website Example</h2>
+
+        <div style="background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%); color: white; border-radius: 12px; padding: 0.4in; text-align: center; margin: 0.2in 0;">
+            <h2 style="color: white; font-size: 36px; margin-bottom: 0.15in;">Production-Ready in Minutes</h2>
+            <p style="font-size: 18px; color: #E2E8F0; margin-bottom: 0.25in;">
+                Skip the boilerplate. Start with enterprise-grade patterns, security, and scalability built-in.
+            </p>
+            <button style="background: #2563EB; color: white; padding: 14px 32px; border: none; border-radius: 8px; font-weight: 600; font-size: 18px; font-family: 'Inter', sans-serif; cursor: pointer; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
+                Get Started
+            </button>
+        </div>
+
+        <h2>Feature Callout Example</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.2in; margin: 0.2in 0;">
+            <div style="background: #F8FAFC; padding: 0.2in; border-radius: 8px; border-left: 4px solid #2563EB;">
+                <h4 style="color: #2563EB; margin-top: 0;">🔒 Security First</h4>
+                <p style="font-size: 13px; margin: 0;">Production validation prevents default credentials and insecure secrets.</p>
+            </div>
+            <div style="background: #F8FAFC; padding: 0.2in; border-radius: 8px; border-left: 4px solid #10B981;">
+                <h4 style="color: #10B981; margin-top: 0;">⚡ Lightning Fast</h4>
+                <p style="font-size: 13px; margin: 0;">From zero to running microservices in under 2 minutes.</p>
+            </div>
+        </div>
+
+        <div class="footer-note">
+            SaaSQuatch Brand Guidelines v1.0 | Page 8
+        </div>
+    </div>
+
+    <!-- Final Page: Summary -->
+    <div class="page">
+        <div class="section-header">
+            <h1>Quick Reference</h1>
+        </div>
+
+        <h2>Brand Essentials</h2>
+
+        <table style="font-size: 14px;">
+            <thead>
+                <tr>
+                    <th>Element</th>
+                    <th>Specification</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><strong>Tagline</strong></td>
+                    <td>Enterprise-Grade Microservices for Ambitious Teams</td>
+                </tr>
+                <tr>
+                    <td><strong>Positioning</strong></td>
+                    <td>Enterprise-Grade Tools for Ambitious Startups</td>
+                </tr>
+                <tr>
+                    <td><strong>Primary Color</strong></td>
+                    <td>Steel Blue 600 (#475569)</td>
+                </tr>
+                <tr>
+                    <td><strong>Accent Color</strong></td>
+                    <td>Royal Blue 600 (#2563EB)</td>
+                </tr>
+                <tr>
+                    <td><strong>Primary Font</strong></td>
+                    <td>Inter (UI & Content)</td>
+                </tr>
+                <tr>
+                    <td><strong>Code Font</strong></td>
+                    <td>JetBrains Mono (Technical)</td>
+                </tr>
+                <tr>
+                    <td><strong>Voice</strong></td>
+                    <td>Helpful & Guiding with Professional Authority</td>
+                </tr>
+                <tr>
+                    <td><strong>Archetype</strong></td>
+                    <td>The Mentor - Experienced, Supportive</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h2>Color Quick Reference</h2>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.15in; margin: 0.2in 0; font-size: 13px;">
+            <div>
+                <strong>Steel Blue 600</strong><br>
+                <code>#475569</code><br>
+                Primary brand color
+            </div>
+            <div>
+                <strong>Royal Blue 600</strong><br>
+                <code>#2563EB</code><br>
+                CTAs, links
+            </div>
+            <div>
+                <strong>Slate 50</strong><br>
+                <code>#F8FAFC</code><br>
+                Backgrounds
+            </div>
+            <div>
+                <strong>Emerald 500</strong><br>
+                <code>#10B981</code><br>
+                Success states
+            </div>
+            <div>
+                <strong>Amber 500</strong><br>
+                <code>#F59E0B</code><br>
+                Warnings
+            </div>
+            <div>
+                <strong>Red 500</strong><br>
+                <code>#EF4444</code><br>
+                Errors
+            </div>
+        </div>
+
+        <h2>Contact & Resources</h2>
+
+        <table style="font-size: 14px;">
+            <tbody>
+                <tr>
+                    <td><strong>Documentation</strong></td>
+                    <td><code>docs/brand-theme.md</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Design Assets</strong></td>
+                    <td><code>docs/brand-assets/</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Questions</strong></td>
+                    <td>Open an issue on GitHub</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <div class="callout callout-primary" style="margin-top: 0.4in;">
+            <div class="callout-title">Living Document</div>
+            <p style="margin: 0; font-size: 14px;">
+                This brand theme is a living document that will evolve as SaaSQuatch grows.
+                We welcome feedback and suggestions for improvement via pull request.
+            </p>
+        </div>
+
+        <div style="margin-top: 0.6in; text-align: center; padding-top: 0.3in; border-top: 2px solid #E2E8F0;">
+            <div style="font-size: 32px; font-weight: 800; color: #475569; margin-bottom: 0.15in;">SaaSQuatch</div>
+            <p style="color: #64748B; font-size: 14px; margin: 0;">
+                © 2025 SaaSQuatch. All rights reserved.<br>
+                Brand Guidelines Version 1.0 | November 2025
+            </p>
+        </div>
+    </div>
+
+</body>
+</html>

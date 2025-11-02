@@ -5,15 +5,22 @@ import { ServiceCard } from '@/components/ServiceCard'
 import { Input } from '@/components/ui/input'
 import { Search } from 'lucide-react'
 import { services, dashboardConfig } from '@/lib/service-config'
-import { checkServiceHealth, checkServiceReadiness } from '@/lib/api-client'
+import { checkServiceHealth, checkServiceReadiness, controlServiceAction, type ServiceControlAction } from '@/lib/api-client'
 import type { ServiceStatus } from '@/lib/types'
 import { useRouter } from 'next/navigation'
+
+interface ControlFeedback {
+  loading: boolean
+  lastMessage?: string
+  lastError?: string
+}
 
 export default function ServicesPage() {
   const router = useRouter()
   const [serviceStatuses, setServiceStatuses] = useState<ServiceStatus[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [controlFeedback, setControlFeedback] = useState<Record<string, ControlFeedback>>({})
 
   const fetchServiceStatuses = async () => {
     const statuses = await Promise.all(
@@ -29,6 +36,7 @@ export default function ServicesPage() {
           health,
           readiness,
           lastChecked: new Date().toISOString(),
+          control: service.control,
         } as ServiceStatus
       })
     )
@@ -47,6 +55,59 @@ export default function ServicesPage() {
     service.displayName.toLowerCase().includes(search.toLowerCase()) ||
     service.name.toLowerCase().includes(search.toLowerCase())
   )
+
+  const handleControlAction = async (serviceName: string, action: ServiceControlAction) => {
+    setControlFeedback((prev) => ({
+      ...prev,
+      [serviceName]: {
+        loading: true,
+        lastMessage: prev[serviceName]?.lastMessage,
+        lastError: undefined,
+      },
+    }))
+
+    try {
+      const response = await controlServiceAction(serviceName, action)
+
+      if (response.status === 'ok') {
+        setControlFeedback((prev) => ({
+          ...prev,
+          [serviceName]: {
+            loading: false,
+            lastMessage: response.message,
+            lastError: undefined,
+          },
+        }))
+
+        await fetchServiceStatuses()
+      } else {
+        setControlFeedback((prev) => ({
+          ...prev,
+          [serviceName]: {
+            loading: false,
+            lastMessage: undefined,
+            lastError: response.message || 'Service control action failed',
+          },
+        }))
+      }
+    } catch (error) {
+      const message =
+        typeof error === 'object' && error !== null && 'message' in error
+          ? String((error as { message: string }).message)
+          : 'Service control action failed'
+
+      setControlFeedback((prev) => ({
+        ...prev,
+        [serviceName]: {
+          loading: false,
+          lastMessage: undefined,
+          lastError: message,
+        },
+      }))
+    }
+  }
+
+  const serviceControlsEnabled = dashboardConfig.features.serviceControls === true
 
   return (
     <div className="space-y-6">
@@ -79,6 +140,9 @@ export default function ServicesPage() {
               service={service}
               onViewLogs={() => router.push(`/logs?service=${service.name}`)}
               onViewMetrics={() => router.push(`/metrics?service=${service.name}`)}
+              onControlAction={(action) => handleControlAction(service.name, action)}
+              controlState={controlFeedback[service.name]}
+              showControls={serviceControlsEnabled}
             />
           ))}
         </div>

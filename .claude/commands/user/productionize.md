@@ -50,7 +50,7 @@ I'll identify:
 ### 6. Type Safety Issues
 - TypeScript `any` types
 - `@ts-ignore` comments
-- Non-null assertions (`!`) without justification
+- Non-null assertions (the bang operator) without justification
 - Implicit any parameters
 - Missing return types
 
@@ -253,7 +253,7 @@ For each selected option, I will:
 ## Phase 4: Reporting
 
 I'll generate a comprehensive report saved to:
-`docs/production-readiness-{YYYYMMDD-HHMMSS}.md`
+**docs/production-readiness-{YYYYMMDD-HHMMSS}.md**
 
 ### Report Contents
 
@@ -367,7 +367,7 @@ NODE_ENV=production
 
 ### 1. Database Setup
 - Create PostgreSQL database
-- Run migrations: `npx prisma migrate deploy`
+- Run migrations: **npx prisma migrate deploy**
 - Seed initial data if needed
 
 ### 2. Redis Setup

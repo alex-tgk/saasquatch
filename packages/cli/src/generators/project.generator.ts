@@ -420,6 +420,15 @@ MIT
       );
     }
 
+    // Generate auth routes
+    if (service.features.authentication || service.features.jwt) {
+      await this.renderer.renderToFile(
+        'base-service/src/routes/auth.ts.hbs',
+        path.join(serviceDir, 'src/routes/auth.ts'),
+        context
+      );
+    }
+
     // Generate port manager utility (for dynamic port allocation)
     await this.renderer.renderToFile(
       'base-service/src/utils/port-manager.ts.hbs',

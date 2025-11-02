@@ -26,6 +26,41 @@ async function databasePlugin(fastify: any) {
       directory: './migrations',
     },
   };
+{{#if (eq infrastructure.database.type "postgresql")}}
+
+  // Validate database credentials for production readiness
+  if (process.env.NODE_ENV === 'production') {
+    const dbUser = process.env.DB_USER || 'postgres';
+    const dbPassword = process.env.DB_PASSWORD || 'postgres';
+
+    if (dbUser === 'postgres' && dbPassword === 'postgres') {
+      throw new Error(
+        '🔒 SECURITY ERROR: Default PostgreSQL credentials detected in production. ' +
+        'Using "postgres/postgres" is NOT SAFE FOR PRODUCTION. ' +
+        'Please set DB_USER and DB_PASSWORD environment variables to secure values.'
+      );
+    }
+
+    if (!process.env.DATABASE_URL && dbPassword === 'postgres') {
+      throw new Error(
+        '🔒 SECURITY ERROR: Default PostgreSQL password detected in production. ' +
+        'Please set DB_PASSWORD environment variable to a secure value.'
+      );
+    }
+  } else if (!process.env.DATABASE_URL) {
+    // Development mode warning
+    const dbUser = process.env.DB_USER || 'postgres';
+    const dbPassword = process.env.DB_PASSWORD || 'postgres';
+
+    if (dbUser === 'postgres' && dbPassword === 'postgres') {
+      fastify.log.warn({
+        msg: '⚠️  WARNING: Using default PostgreSQL credentials (postgres/postgres)',
+        recommendation: 'Set DB_USER and DB_PASSWORD environment variables for better security',
+        note: 'This is acceptable for development but REQUIRED to change for production',
+      });
+    }
+  }
+{{/if}}
 
   const db = knex(config);
 

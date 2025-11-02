@@ -1,12 +1,16 @@
 import fp from 'fastify-plugin';
 import jwt from '@fastify/jwt';
+import type { FastifyRequest } from 'fastify';
 
-declare module 'fastify' {
-  interface FastifyInstance {
-    authenticate: any;
-  }
-  interface FastifyRequest {
-    user?: {
+// Extend JWT payload type
+declare module '@fastify/jwt' {
+  interface FastifyJWT {
+    payload: {
+      id: string;
+      email: string;
+      tenantId?: string;
+    };
+    user: {
       id: string;
       email: string;
       tenantId?: string;
@@ -14,9 +18,34 @@ declare module 'fastify' {
   }
 }
 
+declare module 'fastify' {
+  interface FastifyInstance {
+    authenticate: (request: FastifyRequest, reply: any) => Promise<void>;
+  }
+}
+
 async function authPlugin(fastify: any) {
+  // Validate JWT secret for production readiness
+  const jwtSecret = process.env.JWT_SECRET;
+  const defaultSecret = 'your-super-secret-jwt-key';
+
+  if (!jwtSecret || jwtSecret === defaultSecret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '🔒 SECURITY ERROR: JWT_SECRET must be set and cannot use the default value in production. ' +
+        'Please set a strong, unique JWT_SECRET environment variable. ' +
+        'Generate one with: openssl rand -base64 32'
+      );
+    }
+    fastify.log.warn({
+      msg: '⚠️  WARNING: Using default or missing JWT secret - NOT SAFE FOR PRODUCTION',
+      recommendation: 'Set JWT_SECRET environment variable to a strong, unique value',
+      howToGenerate: 'openssl rand -base64 32',
+    });
+  }
+
   await fastify.register(jwt, {
-    secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
+    secret: jwtSecret || defaultSecret,
     sign: {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     },

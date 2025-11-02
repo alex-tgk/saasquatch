@@ -1,20 +1,52 @@
 'use client'
 
+import { useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Activity, AlertCircle, CheckCircle, Database, MessageSquare, Shield, XCircle } from 'lucide-react'
+import {
+  Activity,
+  AlertCircle,
+  BarChart3,
+  CheckCircle,
+  Database,
+  Loader2,
+  MessageSquare,
+  Play,
+  RefreshCcw,
+  Shield,
+  Square,
+  Terminal,
+  XCircle,
+} from 'lucide-react'
 import { formatUptime } from '@/lib/utils'
 import type { ServiceStatus } from '@/lib/types'
+import type { ServiceControlAction } from '@/lib/api-client'
+
+interface ServiceControlState {
+  loading: boolean
+  lastMessage?: string
+  lastError?: string
+}
 
 interface ServiceCardProps {
   service: ServiceStatus
   onViewLogs?: () => void
   onViewMetrics?: () => void
+  onControlAction?: (action: ServiceControlAction) => void | Promise<void>
+  controlState?: ServiceControlState
+  showControls?: boolean
 }
 
-export function ServiceCard({ service, onViewLogs, onViewMetrics }: ServiceCardProps) {
-  const { name, displayName, health, readiness } = service
+export function ServiceCard({
+  service,
+  onViewLogs,
+  onViewMetrics,
+  onControlAction,
+  controlState,
+  showControls = false,
+}: ServiceCardProps) {
+  const { displayName, health, readiness } = service
 
   const getStatusIcon = () => {
     switch (health.status) {
@@ -45,17 +77,116 @@ export function ServiceCard({ service, onViewLogs, onViewMetrics }: ServiceCardP
     )
   }
 
+  const getCardClassName = () => {
+    const base = "transition-all duration-300 hover:shadow-lg hover:scale-[1.02] relative overflow-hidden"
+    switch (health.status) {
+      case 'healthy':
+        return `${base} border-green-500/20 hover:border-green-500/40`
+      case 'degraded':
+        return `${base} border-yellow-500/20 hover:border-yellow-500/40`
+      case 'unhealthy':
+      case 'offline':
+        return `${base} border-red-500/20 hover:border-red-500/40`
+      default:
+        return base
+    }
+  }
+
+  const controlsDisabled = controlState?.loading
+
+  const controlButtons = useMemo(() => {
+    if (!showControls || !service.control?.enabled) {
+      return null
+    }
+
+    const handleClick = (action: ServiceControlAction) => {
+      if (!controlsDisabled && onControlAction) {
+        void onControlAction(action)
+      }
+    }
+
+    return (
+      <div className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          <Button
+            size="sm"
+            variant="default"
+            className="flex items-center justify-center gap-1"
+            disabled={controlsDisabled}
+            onClick={() => handleClick('start')}
+          >
+            {controlsDisabled ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            <span className="text-xs font-medium">Start</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="flex items-center justify-center gap-1"
+            disabled={controlsDisabled}
+            onClick={() => handleClick('stop')}
+          >
+            {controlsDisabled ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Square className="h-4 w-4" />
+            )}
+            <span className="text-xs font-medium">Stop</span>
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="flex items-center justify-center gap-1"
+            disabled={controlsDisabled}
+            onClick={() => handleClick('restart')}
+          >
+            {controlsDisabled ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCcw className="h-4 w-4" />
+            )}
+            <span className="text-xs font-medium">Restart</span>
+          </Button>
+        </div>
+        {controlState?.lastError && (
+          <p className="rounded-md bg-destructive/10 px-2 py-1 text-xs text-destructive">
+            {controlState.lastError}
+          </p>
+        )}
+        {!controlState?.lastError && controlState?.lastMessage && (
+          <p className="rounded-md bg-primary/5 px-2 py-1 text-xs text-primary">
+            {controlState.lastMessage}
+          </p>
+        )}
+      </div>
+    )
+  }, [controlState, controlsDisabled, onControlAction, service.control?.enabled, showControls])
+
   return (
-    <Card className="transition-all hover:shadow-md">
+    <Card className={getCardClassName()}>
+      {/* Status indicator bar */}
+      <div className={`absolute top-0 left-0 right-0 h-1 ${
+        health.status === 'healthy' ? 'bg-gradient-to-r from-green-500 to-emerald-500' :
+        health.status === 'degraded' ? 'bg-gradient-to-r from-yellow-500 to-orange-500' :
+        'bg-gradient-to-r from-red-500 to-rose-500'
+      }`} />
+
       <CardHeader>
         <div className="flex items-start justify-between">
           <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2">
-              {getStatusIcon()}
-              {displayName}
+            <CardTitle className="flex items-center gap-2 group">
+              <span className={health.status === 'healthy' ? 'animate-pulse' : ''}>
+                {getStatusIcon()}
+              </span>
+              <span className="group-hover:text-primary transition-colors">{displayName}</span>
             </CardTitle>
-            <CardDescription>
-              Port: {service.name.match(/\d+/)?.[0] || 'N/A'}
+            <CardDescription className="flex items-center gap-2">
+              <span className="font-mono text-xs bg-muted px-2 py-0.5 rounded">
+                :{health.port || 'N/A'}
+              </span>
             </CardDescription>
           </div>
           {getStatusBadge()}
@@ -110,12 +241,26 @@ export function ServiceCard({ service, onViewLogs, onViewMetrics }: ServiceCardP
             </div>
           )}
 
+          {controlButtons}
+
           {/* Actions */}
           <div className="flex gap-2 pt-2">
-            <Button size="sm" variant="outline" className="flex-1" onClick={onViewLogs}>
-              View Logs
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 hover:bg-primary hover:text-primary-foreground transition-all"
+              onClick={onViewLogs}
+            >
+              <Terminal className="h-3 w-3 mr-1" />
+              Logs
             </Button>
-            <Button size="sm" variant="outline" className="flex-1" onClick={onViewMetrics}>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex-1 hover:bg-primary hover:text-primary-foreground transition-all"
+              onClick={onViewMetrics}
+            >
+              <BarChart3 className="h-3 w-3 mr-1" />
               Metrics
             </Button>
           </div>

@@ -1,3 +1,5 @@
+import type { ServiceControlConfig } from './service-config'
+
 export interface HealthCheck {
   status: 'healthy' | 'degraded' | 'unhealthy' | 'offline'
   uptime: number
@@ -89,6 +91,7 @@ export interface ServiceStatus {
   readiness?: ReadinessCheck
   metrics?: ServiceMetrics
   lastChecked: string
+  control?: ServiceControlConfig
 }
 
 export interface DashboardStats {

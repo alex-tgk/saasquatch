@@ -1,9 +1,17 @@
 import type { Metadata } from "next"
-import { Inter } from "next/font/google"
+import { Inter, JetBrains_Mono } from "next/font/google"
 import "./globals.css"
 import { Navbar } from "@/components/Navbar"
 
-const inter = Inter({ subsets: ["latin"] })
+const inter = Inter({
+  subsets: ["latin"],
+  variable: "--font-inter",
+})
+
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-jetbrains-mono",
+})
 
 export const metadata: Metadata = {
   title: "{{project.name}} Dashboard",
@@ -17,7 +25,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className={inter.className}>
+      <body className={`${inter.variable} ${jetbrainsMono.variable} font-sans`}>
         <div className="flex min-h-screen flex-col">
           <Navbar />
           <main className="flex-1 container mx-auto px-4 py-8">
@@ -25,7 +33,7 @@ export default function RootLayout({
           </main>
           <footer className="border-t py-6">
             <div className="container mx-auto px-4 text-center text-sm text-muted-foreground">
-              {{project.name}} Dashboard - Built with Next.js 14 & shadcn/ui
+              Built with SaaSQuatch - Complete, powerful, approachable microservices
             </div>
           </footer>
         </div>

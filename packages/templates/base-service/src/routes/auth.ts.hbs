@@ -1,5 +1,5 @@
 import { FastifyPluginAsync } from 'fastify';
-import { Type } from '@sinclair/typebox';
+import { Type, Static } from '@sinclair/typebox';
 
 // TypeBox schemas for type-safe validation
 const RegisterSchema = Type.Object({
@@ -91,7 +91,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
   }, async (request, reply) => {
     // TODO: Implement registration logic in TASK-011
     // This is a placeholder implementation
-    const { email, password, name } = request.body;
+    const { email, password, name } = request.body as Static<typeof RegisterSchema>;
 
     // Hash password with bcrypt (TASK-012)
     // Check if email exists
@@ -165,7 +165,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     },
   }, async (request, reply) => {
     // TODO: Implement login logic in TASK-011
-    const { email, password } = request.body;
+    const { email, password } = request.body as Static<typeof LoginSchema>;
 
     // Find user by email
     // Verify password with bcrypt (TASK-012)
@@ -233,7 +233,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     },
   }, async (request, reply) => {
     // TODO: Implement refresh logic in TASK-011
-    const { refreshToken } = request.body;
+    const { refreshToken } = request.body as Static<typeof RefreshTokenSchema>;
 
     // Verify refresh token
     // Generate new access token

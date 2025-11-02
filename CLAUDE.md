@@ -18,6 +18,7 @@ Read these files **in order** before starting work:
 2. **.claude/agents/decision-tree/08-final-implementation-prompt.md** - Complete implementation guide with code examples
 3. **.claude/agents/decision-tree/09-GETTING-STARTED.md** - Week-by-week implementation plan
 4. **.claude/agents/decision-tree/07-requirements-summary.md** - Full requirements specification
+5. **docs/brand-theme.md** - Brand guidelines and visual identity (REQUIRED for all content/UI work)
 
 ## Project Architecture
 
@@ -455,3 +456,57 @@ Co-Authored-By: Claude <noreply@anthropic.com>"
 - Follow Fastify best practices religiously
 - All routes need JSON Schema validation
 - All services need health checks + structured logging
+
+## Brand Guidelines (CRITICAL)
+
+**ALWAYS follow the brand guidelines when creating content, documentation, or UI elements.**
+
+### Quick Reference
+
+**Brand Identity**: Enterprise-Grade Tools for Ambitious Startups
+**Voice & Tone**: Helpful & Guiding with Professional Authority (The Mentor)
+**Brand Promise**: Complete. Powerful. Approachable.
+
+**Colors**:
+- Primary: Steel Blue 600 (#475569)
+- Accent: Royal Blue 600 (#2563EB)
+- Background: Slate 50 (#F8FAFC)
+- Text: Slate 700 (#334155), Slate 900 (#0F172A)
+- Success: #10B981 | Warning: #F59E0B | Error: #EF4444
+
+**Typography**:
+- UI/Content: Inter (weights: 400, 500, 600, 700)
+- Code/Technical: JetBrains Mono (weights: 400, 500, 600)
+
+**Writing Style**:
+1. Clarity over cleverness - say what you mean
+2. Active voice - "SaaSQuatch generates..."
+3. Present tense - "The CLI creates..."
+4. Second person - "You can configure..."
+5. Specific over generic - use exact tool names
+
+**Error Messages**: Problem → Impact → Solution
+
+**Complete Guidelines**: See `docs/brand-theme.md` and `docs/brand-guidelines.pdf`
+
+### When to Follow Brand Guidelines
+
+✅ **MUST follow** for:
+- README files and documentation
+- CLI output and messages
+- Generated templates (UI components, docs)
+- Error messages and help text
+- Comments in generated code
+- NPM package descriptions
+- Marketing/landing page content
+
+✅ **Reference** for:
+- Color choices in dashboards/UIs
+- Typography in generated services
+- Voice in user-facing messages
+- Component styling
+
+❌ **Not applicable** to:
+- Internal code logic
+- Test files
+- Build configurations

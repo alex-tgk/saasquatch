@@ -1,0 +1,495 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "contextVersion": "1.0.0",
+  "contextFingerprint": "saasquatch-20251031-phase1-week1",
+  "capturedAt": "2025-10-31T23:50:00.000Z",
+  "project": {
+    "name": "SaaSaaS (SaaS-as-a-Service)",
+    "repository": "https://github.com/alex-tgk/saasquatch",
+    "branch": "main",
+    "phase": "Phase 1 - CLI Foundation",
+    "week": "Week 1",
+    "version": "0.1.0",
+    "description": "Production-ready CLI tool that generates complete microservices architectures using Fastify, PostgreSQL/SQLite, Redis, and NATS"
+  },
+  "progress": {
+    "overallCompletion": 20.0,
+    "tasksCompleted": 6,
+    "tasksInProgress": 1,
+    "tasksPending": 24,
+    "totalTasks": 30,
+    "estimatedHoursRemaining": 112.5,
+    "actualHoursSpent": 16.0,
+    "currentTask": {
+      "id": "TASK-007",
+      "title": "Create base service Handlebars template",
+      "status": "in_progress",
+      "priority": "critical",
+      "startedAt": "2025-11-01T00:15:00.000Z"
+    }
+  },
+  "architecturalDecisions": [
+    {
+      "decision": "CLI Tool Framework",
+      "choice": "Commander.js + Inquirer.js + Plop.js",
+      "rationale": "Commander for CLI structure, Inquirer for interactive prompts, Plop for template generation",
+      "impactScore": 10,
+      "date": "2025-10-30"
+    },
+    {
+      "decision": "Template Engine",
+      "choice": "Handlebars",
+      "rationale": "Logic-less templates, excellent for code generation, widely adopted",
+      "impactScore": 9,
+      "date": "2025-10-30"
+    },
+    {
+      "decision": "Configuration Schema",
+      "choice": "Zod",
+      "rationale": "TypeScript-first schema validation with runtime type safety",
+      "impactScore": 10,
+      "date": "2025-10-30"
+    },
+    {
+      "decision": "Generated Framework",
+      "choice": "Fastify 4.x",
+      "rationale": "Performance-focused, plugin-based architecture, native JSON Schema validation, TypeScript support",
+      "impactScore": 10,
+      "date": "2025-10-29"
+    },
+    {
+      "decision": "Database Strategy",
+      "choice": "PostgreSQL 16 OR SQLite (user choice)",
+      "rationale": "PostgreSQL for production multi-tenancy, SQLite for edge deployments with LiteFS",
+      "impactScore": 9,
+      "date": "2025-10-29"
+    },
+    {
+      "decision": "Multi-Tenancy Model",
+      "choice": "Schema-per-tenant (PostgreSQL)",
+      "rationale": "Best balance of isolation, performance, and manageability for SaaS",
+      "impactScore": 8,
+      "date": "2025-10-29"
+    },
+    {
+      "decision": "Message Queue",
+      "choice": "NATS 2.10",
+      "rationale": "Lightweight, cloud-native, excellent for microservices communication",
+      "impactScore": 8,
+      "date": "2025-10-29"
+    },
+    {
+      "decision": "Monorepo Structure",
+      "choice": "pnpm workspaces",
+      "rationale": "Efficient disk usage, fast installs, modern package manager",
+      "impactScore": 9,
+      "date": "2025-10-30"
+    },
+    {
+      "decision": "Authentication",
+      "choice": "JWT-based with Redis token storage",
+      "rationale": "Stateless tokens with centralized revocation capability",
+      "impactScore": 9,
+      "date": "2025-10-29"
+    },
+    {
+      "decision": "Observability Stack",
+      "choice": "Pino (logging) + OpenTelemetry (tracing) + Health checks",
+      "rationale": "Fast structured logging, standard tracing, Kubernetes-ready health endpoints",
+      "impactScore": 7,
+      "date": "2025-10-29"
+    }
+  ],
+  "techStack": {
+    "cliTool": {
+      "language": "TypeScript 5.3+",
+      "runtime": "Node.js 20+",
+      "packageManager": "pnpm",
+      "frameworks": [
+        "Commander.js 11.1+",
+        "Inquirer.js 9.3+",
+        "Plop.js 4.0+",
+        "Handlebars 4.7+"
+      ],
+      "validation": "Zod 3.22+",
+      "utilities": [
+        "chalk (styling)",
+        "ora (spinners)",
+        "listr2 (task lists)",
+        "execa (process execution)",
+        "fs-extra (file operations)"
+      ],
+      "testing": "Jest 29.7+"
+    },
+    "generatedServices": {
+      "framework": "Fastify 4.24+",
+      "patterns": [
+        "Plugin-based architecture",
+        "JSON Schema validation",
+        "Dependency injection",
+        "Centralized error handling"
+      ],
+      "database": {
+        "options": ["PostgreSQL 16", "SQLite + LiteFS"],
+        "orm": "Native SQL (prepared statements)"
+      },
+      "cache": "Redis 7",
+      "messageQueue": "NATS 2.10",
+      "authentication": "JWT + bcrypt",
+      "logging": "Pino (structured JSON)",
+      "tracing": "OpenTelemetry",
+      "testing": "Jest + Supertest"
+    }
+  },
+  "repositoryStructure": {
+    "monorepo": true,
+    "packageManager": "pnpm",
+    "workspaces": [
+      "packages/cli",
+      "packages/templates",
+      "packages/core",
+      "packages/docs"
+    ],
+    "keyDirectories": {
+      "packages/cli/src": {
+        "commands": "CLI commands (init.ts)",
+        "prompts": "Interactive questionnaire (project.prompts.ts)",
+        "generators": "Project/service generators (project.generator.ts)",
+        "types": "Config types and Zod schemas (config.types.ts)",
+        "utils": "Template utilities (handlebars-helpers.ts, template-renderer.ts)"
+      },
+      "packages/templates": {
+        "base-service": "Reusable Fastify service template",
+        "auth-service": "JWT authentication service (Phase 2)",
+        "user-service": "User management with multi-tenancy (Phase 3)",
+        "api-gateway": "API gateway template (Phase 3)",
+        "infrastructure": "Docker Compose, Redis, PostgreSQL, NATS",
+        "shared": "Shared utilities templates",
+        "docs": "Documentation templates"
+      }
+    }
+  },
+  "implementationPhases": {
+    "phase1": {
+      "name": "CLI Foundation",
+      "week": 1,
+      "status": "in_progress",
+      "completion": 75.0,
+      "tasks": [
+        "TASK-001: Setup pnpm monorepo (✅ completed)",
+        "TASK-002: Install CLI dependencies (✅ completed)",
+        "TASK-003: Create Zod configuration schema (✅ completed)",
+        "TASK-004: Implement interactive prompts (✅ completed)",
+        "TASK-005: Build saasquatch init command (✅ completed)",
+        "TASK-006: Implement project generator core (✅ completed)",
+        "TASK-007: Create base service template (🔄 in progress)",
+        "TASK-008: Test end-to-end CLI generation (⏳ pending)"
+      ],
+      "goal": "Working CLI that generates basic project structure"
+    },
+    "phase2": {
+      "name": "Fastify Auth Service",
+      "week": 2,
+      "status": "pending",
+      "completion": 0,
+      "tasks": [
+        "TASK-009: Auth service plugin architecture",
+        "TASK-010: JWT authentication service",
+        "TASK-011: Auth routes with JSON Schema",
+        "TASK-012: Password hashing with bcrypt",
+        "TASK-013: Comprehensive auth tests",
+        "TASK-014: OpenAPI/Swagger documentation"
+      ],
+      "goal": "Perfect auth service as gold standard"
+    },
+    "phase3": {
+      "name": "User Service + Infrastructure",
+      "week": 3,
+      "status": "pending",
+      "completion": 0,
+      "tasks": [
+        "TASK-015: User service CRUD",
+        "TASK-016: Schema-per-tenant multi-tenancy",
+        "TASK-017: NATS event publishing",
+        "TASK-018: Docker Compose template",
+        "TASK-019: Integration testing"
+      ],
+      "goal": "Multi-tenant user service with infrastructure"
+    },
+    "phase4": {
+      "name": "Testing & Documentation",
+      "week": 4,
+      "status": "pending",
+      "completion": 0,
+      "tasks": [
+        "TASK-020 to TASK-030: Tests, docs, observability, examples, npm publish"
+      ],
+      "goal": "Production-ready MVP with 80%+ test coverage"
+    }
+  },
+  "criticalPrinciples": [
+    {
+      "principle": "AI = Build-Time Only",
+      "description": "Claude helps BUILD the CLI tool. Generated services have ZERO AI dependencies. Output is traditional, well-architected TypeScript/Fastify code.",
+      "importance": "critical"
+    },
+    {
+      "principle": "One Thing Perfect",
+      "description": "Build auth service as the gold standard before adding more features. Perfect one template before expanding.",
+      "importance": "critical"
+    },
+    {
+      "principle": "Tests As You Go",
+      "description": "Generate tests while building templates, not as an afterthought. Tests validate patterns.",
+      "importance": "high"
+    },
+    {
+      "principle": "Documentation = Code",
+      "description": "Docs are generated from templates. Keep templates and docs in sync. Good docs = good templates.",
+      "importance": "high"
+    }
+  ],
+  "keyFiles": {
+    "documentation": [
+      "START-HERE.md (project resumption guide)",
+      "CLAUDE.md (Claude Code instructions)",
+      "GLOBAL-CLI-SETUP.md (global installation)",
+      "packages/cli/TESTING.md (testing guide)"
+    ],
+    "configuration": [
+      "pnpm-workspace.yaml (monorepo config)",
+      "packages/cli/package.json (CLI dependencies)",
+      "packages/cli/tsconfig.json (TypeScript config)",
+      ".taskmaster/tasks.json (task tracking)"
+    ],
+    "core": [
+      "packages/cli/src/types/config.types.ts (Zod schema - CRITICAL)",
+      "packages/cli/src/prompts/project.prompts.ts (interactive prompts)",
+      "packages/cli/src/commands/init.ts (main command)",
+      "packages/cli/src/generators/project.generator.ts (generator logic)",
+      "packages/cli/src/utils/template-renderer.ts (Handlebars engine)"
+    ],
+    "templates": [
+      "packages/templates/base-service/ (reusable Fastify base)",
+      "packages/templates/infrastructure/ (Docker Compose)",
+      "packages/templates/shared/ (shared utilities)"
+    ]
+  },
+  "configurationSchema": {
+    "file": "saasquatch.config.json",
+    "location": "packages/cli/src/types/config.types.ts",
+    "mainSections": {
+      "project": "name, description, author, packageManager",
+      "framework": "name: 'fastify', version",
+      "infrastructure": {
+        "cache": "Redis configuration",
+        "database": "PostgreSQL/SQLite choice + multi-tenancy",
+        "messageQueue": "NATS configuration"
+      },
+      "services": "Array of services with features (database, cache, messageQueue, authentication)",
+      "observability": "logging, healthChecks, tracing"
+    },
+    "validation": "Runtime validation with Zod, TypeScript types exported"
+  },
+  "generatedProjectStructure": {
+    "root": [
+      "saasquatch.config.json (configuration)",
+      "pnpm-workspace.yaml (monorepo)",
+      "docker-compose.yml (infrastructure)",
+      "README.md (auto-generated)"
+    ],
+    "services": [
+      "auth-service/ (port 3001)",
+      "user-service/ (port 3002)",
+      "api-gateway/ (port 3000)"
+    ],
+    "infrastructure": [
+      "postgresql/ (schema setup)",
+      "redis/ (config)",
+      "nats/ (config)"
+    ],
+    "shared": "Shared types, config, utilities"
+  },
+  "recentCommits": [
+    {
+      "hash": "bfe844f",
+      "message": "feat: complete TASK-007 - Handlebars template system",
+      "date": "2025-10-31"
+    },
+    {
+      "hash": "16d1b7e",
+      "message": "feat: complete TASK-006 - project generator core",
+      "date": "2025-10-31"
+    },
+    {
+      "hash": "7ee12c7",
+      "message": "feat: initialize Task Master project tracking system",
+      "date": "2025-10-31"
+    }
+  ],
+  "currentChallenges": [
+    {
+      "challenge": "Completing base-service template",
+      "context": "TASK-007 in progress, needs Fastify app structure with plugins, health check, Pino logging",
+      "blocker": false,
+      "estimatedResolution": "2-3 hours"
+    },
+    {
+      "challenge": "End-to-end testing",
+      "context": "TASK-008 pending, blocks all of Phase 2",
+      "blocker": true,
+      "estimatedResolution": "2 hours (after TASK-007)"
+    }
+  ],
+  "nextActions": [
+    {
+      "priority": 1,
+      "action": "Complete TASK-007: Base service Handlebars template",
+      "details": "Build minimal Fastify app with plugin loading, health check, Pino logging, TypeScript setup",
+      "estimatedHours": 2.5,
+      "blocksCount": 23
+    },
+    {
+      "priority": 2,
+      "action": "Execute TASK-008: End-to-end CLI testing",
+      "details": "Run saasquatch init test-project, verify structure, validate config",
+      "estimatedHours": 2,
+      "blocksCount": 22
+    },
+    {
+      "priority": 3,
+      "action": "Begin Phase 2: Auth service plugin architecture",
+      "details": "Start TASK-009 after Week 1 validation complete",
+      "estimatedHours": 6,
+      "blocksCount": 18
+    }
+  ],
+  "successMetrics": {
+    "mvpComplete": {
+      "functionality": [
+        "saasquatch init generates working project in < 2 min",
+        "Auth service: register, login, JWT flow works",
+        "User service: CRUD + multi-tenancy works",
+        "Docker Compose starts all services"
+      ],
+      "codeQuality": [
+        "TypeScript strict mode compiles",
+        "80%+ test coverage",
+        "JSON Schema on all routes",
+        "Structured logging (Pino)",
+        "Health checks on all services"
+      ],
+      "documentation": [
+        "Root README with quickstart",
+        "OpenAPI/Swagger at /docs",
+        "Architecture diagrams",
+        "Per-service READMEs"
+      ]
+    }
+  },
+  "dependencies": {
+    "cli": {
+      "runtime": [
+        "commander@11.1.0",
+        "inquirer@9.3.8",
+        "handlebars@4.7.8",
+        "zod@3.22.4",
+        "chalk@5.3.0",
+        "ora@7.0.1",
+        "listr2@7.0.2",
+        "execa@8.0.1",
+        "fs-extra@11.2.0"
+      ],
+      "dev": [
+        "typescript@5.3.3",
+        "tsx@4.7.0",
+        "jest@29.7.0"
+      ]
+    },
+    "generatedServices": [
+      "fastify@^4.24.0",
+      "pino@^8.16.0",
+      "@fastify/jwt",
+      "@fastify/redis",
+      "pg (PostgreSQL)",
+      "bcrypt",
+      "nats"
+    ]
+  },
+  "knowledgeGraph": {
+    "nodes": [
+      {
+        "id": "cli-tool",
+        "type": "system",
+        "description": "Main CLI application"
+      },
+      {
+        "id": "config-schema",
+        "type": "component",
+        "description": "Zod schema for saasquatch.config.json"
+      },
+      {
+        "id": "template-engine",
+        "type": "component",
+        "description": "Handlebars template renderer"
+      },
+      {
+        "id": "project-generator",
+        "type": "component",
+        "description": "Orchestrates project generation"
+      },
+      {
+        "id": "fastify-service",
+        "type": "artifact",
+        "description": "Generated Fastify microservice"
+      }
+    ],
+    "edges": [
+      {
+        "from": "cli-tool",
+        "to": "config-schema",
+        "relation": "validates input with"
+      },
+      {
+        "from": "cli-tool",
+        "to": "project-generator",
+        "relation": "orchestrates"
+      },
+      {
+        "from": "project-generator",
+        "to": "template-engine",
+        "relation": "uses"
+      },
+      {
+        "from": "template-engine",
+        "to": "fastify-service",
+        "relation": "generates"
+      }
+    ]
+  },
+  "semanticTags": [
+    "cli-tool",
+    "code-generator",
+    "fastify",
+    "microservices",
+    "typescript",
+    "saas",
+    "multi-tenancy",
+    "jwt-auth",
+    "postgresql",
+    "redis",
+    "nats",
+    "handlebars",
+    "pnpm-monorepo",
+    "phase-1",
+    "week-1"
+  ],
+  "contextMetadata": {
+    "capturedBy": "Claude Code",
+    "sessionId": "2025-10-31-context-save",
+    "storageFormat": "json",
+    "compressionLevel": "comprehensive",
+    "vectorEmbeddingReady": true,
+    "knowledgeGraphReady": true
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "defaultTag": "master",
+  "statusOrder": [
+    "pending",
+    "in-progress",
+    "blocked",
+    "done"
+  ],
+  "priorityOrder": [
+    "high",
+    "medium",
+    "low"
+  ],
+  "defaultPriority": "medium",
+  "taskFile": "tasks/tasks.json",
+  "taskFilesDirectory": "tasks",
+  "docsDirectory": "docs",
+  "scriptsDirectory": "scripts",
+  "metadataFile": ".taskkeeper/config.json"
+}

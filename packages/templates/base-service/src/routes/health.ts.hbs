@@ -21,6 +21,16 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
               example: '{{service.name}}',
               description: 'Name of the service',
             },
+            port: {
+              type: 'number',
+              example: {{service.port}},
+              description: 'Port the service is running on',
+            },
+            uptime: {
+              type: 'number',
+              example: 3600,
+              description: 'Process uptime in seconds',
+            },
             timestamp: {
               type: 'string',
               format: 'date-time',
@@ -35,6 +45,8 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
     return {
       status: 'healthy',
       service: '{{service.name}}',
+      port: {{service.port}},
+      uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     };
   });
@@ -59,18 +71,33 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
               description: 'Individual dependency health checks',
               properties: {
                 {{#if service.features.database}}database: {
-                  type: 'boolean',
-                  example: true,
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'], description: 'Status of the dependency' },
+                    responseTime: { type: 'number', description: 'Response time in milliseconds' },
+                    message: { type: 'string', description: 'Optional error message if down' }
+                  },
+                  required: ['status', 'responseTime'],
                   description: 'Database connection status',
                 },
                 {{/if}}{{#if service.features.cache}}redis: {
-                  type: 'boolean',
-                  example: true,
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'], description: 'Status of the dependency' },
+                    responseTime: { type: 'number', description: 'Response time in milliseconds' },
+                    message: { type: 'string', description: 'Optional error message if down' }
+                  },
+                  required: ['status', 'responseTime'],
                   description: 'Redis connection status',
                 },
                 {{/if}}{{#if service.features.messageQueue}}nats: {
-                  type: 'boolean',
-                  example: true,
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'], description: 'Status of the dependency' },
+                    responseTime: { type: 'number', description: 'Response time in milliseconds' },
+                    message: { type: 'string', description: 'Optional error message if down' }
+                  },
+                  required: ['status', 'responseTime'],
                   description: 'NATS connection status',
                 },
                 {{/if}}
@@ -102,6 +129,36 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
             checks: {
               type: 'object',
               description: 'Individual dependency health checks',
+              properties: {
+                {{#if service.features.database}}database: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number' },
+                    message: { type: 'string' }
+                  },
+                  required: ['status', 'responseTime']
+                },
+                {{/if}}{{#if service.features.cache}}redis: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number' },
+                    message: { type: 'string' }
+                  },
+                  required: ['status', 'responseTime']
+                },
+                {{/if}}{{#if service.features.messageQueue}}nats: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number' },
+                    message: { type: 'string' }
+                  },
+                  required: ['status', 'responseTime']
+                },
+                {{/if}}
+              },
             },
             service: {
               type: 'string',
@@ -116,33 +173,59 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
       },
     },
   }, async (request, reply) => {
-    const checks: Record<string, boolean> = {};
+    const checks: Record<string, { status: string; responseTime: number; message?: string }> = {};
 
     {{#if service.features.database}}// Check database
+    const dbStart = Date.now();
     try {
       await fastify.db.raw('SELECT 1');
-      checks.database = true;
+      checks.database = {
+        status: 'up',
+        responseTime: Date.now() - dbStart,
+      };
     } catch (error) {
-      checks.database = false;
+      checks.database = {
+        status: 'down',
+        responseTime: Date.now() - dbStart,
+        message: error instanceof Error ? error.message : 'Database connection failed',
+      };
     }
 
     {{/if}}{{#if service.features.cache}}// Check Redis
+    const redisStart = Date.now();
     try {
       await fastify.redis.ping();
-      checks.redis = true;
+      checks.redis = {
+        status: 'up',
+        responseTime: Date.now() - redisStart,
+      };
     } catch (error) {
-      checks.redis = false;
+      checks.redis = {
+        status: 'down',
+        responseTime: Date.now() - redisStart,
+        message: error instanceof Error ? error.message : 'Redis connection failed',
+      };
     }
 
     {{/if}}{{#if service.features.messageQueue}}// Check NATS
+    const natsStart = Date.now();
     try {
-      checks.nats = fastify.nats.isClosed() === false;
+      const isConnected = fastify.nats.isClosed() === false;
+      checks.nats = {
+        status: isConnected ? 'up' : 'down',
+        responseTime: Date.now() - natsStart,
+        message: isConnected ? undefined : 'NATS connection closed',
+      };
     } catch (error) {
-      checks.nats = false;
+      checks.nats = {
+        status: 'down',
+        responseTime: Date.now() - natsStart,
+        message: error instanceof Error ? error.message : 'NATS connection failed',
+      };
     }
 
-    {{/if}}const allHealthy = Object.values(checks).every(v => v === true);
-    const status = allHealthy ? 'ready' : 'not ready';
+    {{/if}}const allHealthy = Object.values(checks).every(c => c.status === 'up');
+    const status = allHealthy ? 'ready' : 'not_ready';
 
     reply.code(allHealthy ? 200 : 503);
     return {
@@ -150,6 +233,71 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
       checks,
       service: '{{service.name}}',
       timestamp: new Date().toISOString(),
+    };
+  });
+
+  fastify.get('/metrics', {
+    schema: {
+      description: 'Get service metrics and resource usage',
+      tags: ['Health'],
+      response: {
+        200: {
+          description: 'Current service metrics',
+          type: 'object',
+          properties: {
+            timestamp: { type: 'string', format: 'date-time' },
+            uptime: { type: 'number', description: 'Process uptime in seconds' },
+            memory: {
+              type: 'object',
+              properties: {
+                rss: { type: 'number', description: 'Resident Set Size in bytes' },
+                heapTotal: { type: 'number', description: 'Total heap size in bytes' },
+                heapUsed: { type: 'number', description: 'Used heap size in bytes' },
+                external: { type: 'number', description: 'External memory in bytes' },
+              },
+            },
+            cpu: {
+              type: 'object',
+              properties: {
+                user: { type: 'number', description: 'User CPU time in microseconds' },
+                system: { type: 'number', description: 'System CPU time in microseconds' },
+              },
+            },
+            eventLoop: {
+              type: 'object',
+              properties: {
+                delay: { type: 'number', description: 'Event loop delay in milliseconds' },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const memUsage = process.memoryUsage();
+    const cpuUsage = process.cpuUsage();
+
+    // Measure event loop delay
+    const start = Date.now();
+    await new Promise(resolve => setImmediate(resolve));
+    const eventLoopDelay = Date.now() - start;
+
+    return {
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      memory: {
+        rss: memUsage.rss,
+        heapTotal: memUsage.heapTotal,
+        heapUsed: memUsage.heapUsed,
+        external: memUsage.external,
+      },
+      cpu: {
+        user: cpuUsage.user,
+        system: cpuUsage.system,
+      },
+      eventLoop: {
+        delay: eventLoopDelay,
+      },
     };
   });
 };

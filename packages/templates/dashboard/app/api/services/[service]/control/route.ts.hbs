@@ -1,0 +1,108 @@
+import { NextResponse, type NextRequest } from 'next/server'
+import { controlService, isOperationInProgress, ServiceControlError, type ServiceControlAction } from '@/lib/service-control'
+import { getServiceByName } from '@/lib/service-config'
+
+export const runtime = 'nodejs'
+
+const allowedActions: ServiceControlAction[] = ['start', 'stop', 'restart', 'status']
+
+function parseAction(body: unknown): ServiceControlAction {
+  if (!body || typeof body !== 'object') {
+    throw new ServiceControlError('Invalid request payload', 400, 'INVALID_BODY')
+  }
+
+  const value = (body as Record<string, unknown>).action
+  if (typeof value !== 'string') {
+    throw new ServiceControlError('Missing action parameter', 400, 'ACTION_REQUIRED')
+  }
+
+  if (!allowedActions.includes(value as ServiceControlAction)) {
+    throw new ServiceControlError(`Unsupported action: ${value}`, 400, 'ACTION_UNSUPPORTED')
+  }
+
+  return value as ServiceControlAction
+}
+
+export async function POST(request: NextRequest, { params }: { params: { service: string } }) {
+  const serviceName = params.service
+
+  const service = getServiceByName(serviceName)
+  if (!service) {
+    return NextResponse.json(
+      {
+        status: 'error',
+        message: `Service ${serviceName} not found`,
+        code: 'SERVICE_NOT_FOUND',
+      },
+      { status: 404 }
+    )
+  }
+
+  let action: ServiceControlAction
+  try {
+    const body = await request.json()
+    action = parseAction(body)
+  } catch (error) {
+    if (error instanceof ServiceControlError) {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: error.message,
+          code: error.code,
+        },
+        { status: error.statusCode }
+      )
+    }
+
+    return NextResponse.json(
+      {
+        status: 'error',
+        message: 'Invalid JSON payload',
+        code: 'INVALID_JSON',
+      },
+      { status: 400 }
+    )
+  }
+
+  if (isOperationInProgress(serviceName)) {
+    return NextResponse.json(
+      {
+        status: 'error',
+        message: 'Another control operation is already running for this service',
+        code: 'OPERATION_IN_PROGRESS',
+      },
+      { status: 409 }
+    )
+  }
+
+  try {
+    const result = await controlService(serviceName, action)
+
+    return NextResponse.json({
+      status: 'ok',
+      message: `${service.displayName} ${action} command executed successfully`,
+      result,
+    })
+  } catch (error) {
+    if (error instanceof ServiceControlError) {
+      return NextResponse.json(
+        {
+          status: 'error',
+          message: error.message,
+          code: error.code,
+          details: error.details,
+        },
+        { status: error.statusCode }
+      )
+    }
+
+    return NextResponse.json(
+      {
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: 'SERVICE_CONTROL_FAILURE',
+      },
+      { status: 500 }
+    )
+  }
+}

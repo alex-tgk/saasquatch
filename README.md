@@ -2,7 +2,9 @@
 
 A powerful CLI tool that generates complete, production-ready microservices architectures using **Fastify**, **PostgreSQL/SQLite**, **Redis**, and **NATS** in seconds.
 
-**Current Status**: Phase 1 - CLI Foundation (Week 1)
+**Current Status**: Phase 1 - CLI Foundation (70% Complete)
+
+📋 **[View Product Requirements Document (PRD)](docs/planning/prd-latest.md)** - Comprehensive project roadmap, gap analysis, and implementation plan
 
 ## 🎯 What is SaaSquatch?
 

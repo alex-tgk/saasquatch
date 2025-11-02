@@ -7,6 +7,7 @@ import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{/if}}{{#if service.features.rateLimit}}import rateLimit from '@fastify/rate-limit';
 {{/if}}{{#if service.features.compression}}import compress from '@fastify/compress';
 {{/if}}{{#if service.features.healthChecks}}import { healthRoutes } from './routes/health.js';
+{{/if}}{{#if (or service.features.authentication service.features.jwt)}}import { authRoutes } from './routes/auth.js';
 {{/if}}{{#if service.features.database}}import { databasePlugin } from './plugins/database.js';
 {{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
 {{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
@@ -54,8 +55,29 @@ export async function buildApp(opts = {}) {
 
   {{/if}}// Register routes
   {{#if service.features.healthChecks}}await app.register(healthRoutes);
+  {{/if}}{{#if (or service.features.authentication service.features.jwt)}}await app.register(authRoutes);
 
-  {{/if}}// Default route
+  {{/if}}// Service discovery endpoint for dynamic port discovery
+  app.get('/discovery', async (request, reply) => {
+    const address = app.server.address();
+    const port = address && typeof address !== 'string' ? address.port : {{service.port}};
+    const host = process.env.HOST || 'localhost';
+
+    return {
+      name: '{{service.name}}',
+      port,
+      host,
+      url: `http://${host}:${port}`,
+      features: {
+        database: {{#if service.features.database}}true{{else}}false{{/if}},
+        cache: {{#if service.features.cache}}true{{else}}false{{/if}},
+        messageQueue: {{#if service.features.messageQueue}}true{{else}}false{{/if}},
+        authentication: {{#if service.features.authentication}}true{{else}}false{{/if}},
+      },
+    };
+  });
+
+  // Default route
   app.get('/', {
     schema: {
       description: 'Service information endpoint',

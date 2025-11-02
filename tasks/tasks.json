@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "tags": {
+    "master": {
+      "name": "master",
+      "nextId": 1,
+      "tasks": []
+    }
+  }
+}

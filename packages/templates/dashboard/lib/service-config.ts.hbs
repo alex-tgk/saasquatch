@@ -1,3 +1,16 @@
+export type ServiceControlMode = 'docker' | 'command'
+
+export interface ServiceControlConfig {
+  enabled: boolean
+  mode: ServiceControlMode
+  target?: string
+  startCommand?: string
+  stopCommand?: string
+  restartCommand?: string
+  statusCommand?: string
+  cwd?: string
+}
+
 export interface ServiceConfig {
   name: string
   displayName: string
@@ -9,6 +22,30 @@ export interface ServiceConfig {
     cache?: boolean
     messageQueue?: boolean
     authentication?: boolean
+  }
+  control?: ServiceControlConfig
+}
+
+const controlsGloballyEnabled = process.env.NEXT_PUBLIC_ENABLE_SERVICE_CONTROLS === 'true'
+const defaultControlMode = (process.env.SERVICE_CONTROLS_MODE as ServiceControlMode) || 'docker'
+
+function buildServiceControlConfig(serviceName: string): ServiceControlConfig | undefined {
+  if (!controlsGloballyEnabled) {
+    return undefined
+  }
+
+  const envKey = serviceName.toUpperCase().replace(/-/g, '_')
+  const mode = (process.env[`SERVICE_${envKey}_CONTROL_MODE`] as ServiceControlMode) || defaultControlMode
+
+  return {
+    enabled: true,
+    mode,
+    target: process.env[`SERVICE_${envKey}_CONTROL_TARGET`] || serviceName,
+    startCommand: process.env[`SERVICE_${envKey}_START_CMD`],
+    stopCommand: process.env[`SERVICE_${envKey}_STOP_CMD`],
+    restartCommand: process.env[`SERVICE_${envKey}_RESTART_CMD`],
+    statusCommand: process.env[`SERVICE_${envKey}_STATUS_CMD`],
+    cwd: process.env[`SERVICE_${envKey}_CONTROL_CWD`],
   }
 }
 
@@ -26,6 +63,7 @@ export const services: ServiceConfig[] = [
       messageQueue: {{#if this.features.messageQueue}}true{{else}}false{{/if}},
       authentication: {{#if this.features.authentication}}true{{else}}false{{/if}},
     },
+    control: buildServiceControlConfig('{{this.name}}'),
   },
   {{/each}}
 ]

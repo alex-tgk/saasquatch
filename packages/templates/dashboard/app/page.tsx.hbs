@@ -29,6 +29,7 @@ export default function DashboardPage() {
           health,
           readiness,
           lastChecked: new Date().toISOString(),
+          control: service.control,
         } as ServiceStatus
       })
     )
@@ -70,7 +71,7 @@ export default function DashboardPage() {
       <div className="flex h-[60vh] items-center justify-center">
         <div className="text-center">
           <Activity className="mx-auto h-12 w-12 animate-pulse text-primary" />
-          <p className="mt-4 text-muted-foreground">Loading dashboard...</p>
+          <p className="mt-4 text-muted-foreground">Loading your services...</p>
         </div>
       </div>
     )
@@ -80,9 +81,9 @@ export default function DashboardPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard Overview</h1>
+        <h1 className="text-3xl font-bold tracking-tight">Service Overview</h1>
         <p className="text-muted-foreground">
-          Monitor the health and performance of your microservices
+          Monitor your microservices in real-time - health checks, performance metrics, and more
         </p>
       </div>
 
@@ -105,10 +106,10 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Healthy Services</CardTitle>
-              <CheckCircle className="h-4 w-4 text-green-500" />
+              <CheckCircle className="h-4 w-4 text-success" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.healthyServices}</div>
+              <div className="text-2xl font-bold text-success">{stats.healthyServices}</div>
               <p className="text-xs text-muted-foreground">
                 {stats.totalServices > 0
                   ? `${Math.round((stats.healthyServices / stats.totalServices) * 100)}% uptime`
@@ -121,10 +122,10 @@ export default function DashboardPage() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Issues</CardTitle>
-              <AlertCircle className="h-4 w-4 text-yellow-500" />
+              <AlertCircle className="h-4 w-4 text-warning" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">
+              <div className="text-2xl font-bold text-warning">
                 {stats.degradedServices + stats.unhealthyServices}
               </div>
               <p className="text-xs text-muted-foreground">
@@ -170,21 +171,21 @@ export default function DashboardPage() {
         <Card className="cursor-pointer transition-all hover:shadow-md" onClick={() => router.push('/logs')}>
           <CardHeader>
             <CardTitle className="text-base">View Logs</CardTitle>
-            <CardDescription>Monitor real-time service logs</CardDescription>
+            <CardDescription>Track real-time application logs and debug issues</CardDescription>
           </CardHeader>
         </Card>
 
         <Card className="cursor-pointer transition-all hover:shadow-md" onClick={() => router.push('/metrics')}>
           <CardHeader>
             <CardTitle className="text-base">View Metrics</CardTitle>
-            <CardDescription>Analyze performance metrics</CardDescription>
+            <CardDescription>Analyze performance data and identify bottlenecks</CardDescription>
           </CardHeader>
         </Card>
 
         <Card className="cursor-pointer transition-all hover:shadow-md" onClick={() => router.push('/nats')}>
           <CardHeader>
             <CardTitle className="text-base">NATS Inspector</CardTitle>
-            <CardDescription>Monitor message queue</CardDescription>
+            <CardDescription>Monitor your message queue and event streams</CardDescription>
           </CardHeader>
         </Card>
       </div>

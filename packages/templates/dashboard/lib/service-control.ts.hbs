@@ -1,0 +1,216 @@
+import { exec } from 'node:child_process'
+import path from 'node:path'
+import { promisify } from 'node:util'
+import type { ServiceControlConfig, ServiceControlMode } from './service-config'
+import { dashboardConfig, getServiceByName } from './service-config'
+
+const execAsync = promisify(exec)
+
+export type ServiceControlAction = 'start' | 'stop' | 'restart' | 'status'
+
+export interface ServiceControlResult {
+  service: string
+  action: ServiceControlAction
+  success: boolean
+  output?: string
+  startedAt: string
+  finishedAt: string
+}
+
+export class ServiceControlError extends Error {
+  statusCode: number
+  code?: string
+  details?: string
+
+  constructor(message: string, statusCode = 400, code?: string, details?: string) {
+    super(message)
+    this.name = 'ServiceControlError'
+    this.statusCode = statusCode
+    this.code = code
+    this.details = details
+  }
+}
+
+const inFlightOperations = new Map<string, Promise<ServiceControlResult>>()
+
+function assertControlsEnabled(config?: ServiceControlConfig) {
+  if (!dashboardConfig.features.serviceControls) {
+    throw new ServiceControlError('Service controls are disabled by configuration', 403, 'SERVICE_CONTROLS_DISABLED')
+  }
+
+  if (!config || !config.enabled) {
+    throw new ServiceControlError('This service does not support control operations', 404, 'SERVICE_CONTROLS_UNAVAILABLE')
+  }
+}
+
+function resolveWorkingDirectory(config?: ServiceControlConfig) {
+  if (config?.cwd) {
+    return path.resolve(config.cwd)
+  }
+
+  const rootOverride = process.env.SERVICE_CONTROLS_WORKDIR
+  if (rootOverride) {
+    return path.resolve(rootOverride)
+  }
+
+  return path.resolve(process.cwd(), '..')
+}
+
+function buildDockerCommand(action: ServiceControlAction, config: ServiceControlConfig): string {
+  const composeBinary = process.env.SERVICE_CONTROLS_COMPOSE_COMMAND || 'docker compose'
+  const composeFile = process.env.SERVICE_CONTROLS_COMPOSE_FILE
+  const projectName = process.env.SERVICE_CONTROLS_COMPOSE_PROJECT
+  const target = config.target || ''
+
+  const args: string[] = []
+  if (composeFile) {
+    args.push('-f', composeFile)
+  }
+  if (projectName) {
+    args.push('-p', projectName)
+  }
+
+  switch (action) {
+    case 'start':
+      return `${composeBinary} ${args.join(' ')} up -d ${target}`.trim()
+    case 'stop':
+      return `${composeBinary} ${args.join(' ')} stop ${target}`.trim()
+    case 'restart':
+      return `${composeBinary} ${args.join(' ')} restart ${target}`.trim()
+    case 'status':
+      return `${composeBinary} ${args.join(' ')} ps ${target}`.trim()
+    default:
+      throw new ServiceControlError(`Unsupported action: ${action}`, 400, 'INVALID_ACTION')
+  }
+}
+
+function buildCommandBasedAction(action: ServiceControlAction, config: ServiceControlConfig): string {
+  const lookup: Record<ServiceControlAction, string | undefined> = {
+    start: config.startCommand,
+    stop: config.stopCommand,
+    restart: config.restartCommand,
+    status: config.statusCommand,
+  }
+
+  const command = lookup[action]
+  if (!command) {
+    throw new ServiceControlError(
+      `No ${action} command configured for this service`,
+      400,
+      'COMMAND_NOT_CONFIGURED'
+    )
+  }
+
+  return command
+}
+
+async function executeCommand(command: string, cwd: string): Promise<{ stdout: string; stderr: string }> {
+  return execAsync(command, {
+    cwd,
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024,
+  })
+}
+
+async function performRestartWithFallback(
+  config: ServiceControlConfig,
+  cwd: string
+): Promise<{ stdout: string; stderr: string }> {
+  if (config.restartCommand) {
+    return executeCommand(config.restartCommand, cwd)
+  }
+
+  const stop = config.stopCommand
+  const start = config.startCommand
+
+  if (!stop || !start) {
+    throw new ServiceControlError(
+      'Restart command not configured and unable to fall back to stop/start',
+      400,
+      'RESTART_UNSUPPORTED'
+    )
+  }
+
+  await executeCommand(stop, cwd)
+  return executeCommand(start, cwd)
+}
+
+async function runControlCommand(
+  action: ServiceControlAction,
+  config: ServiceControlConfig
+): Promise<{ stdout: string; stderr: string }> {
+  const cwd = resolveWorkingDirectory(config)
+
+  if (config.mode === 'docker') {
+    const command = buildDockerCommand(action, config)
+    return executeCommand(command, cwd)
+  }
+
+  if (action === 'restart') {
+    return performRestartWithFallback(config, cwd)
+  }
+
+  const command = buildCommandBasedAction(action, config)
+  return executeCommand(command, cwd)
+}
+
+export async function controlService(serviceName: string, action: ServiceControlAction): Promise<ServiceControlResult> {
+  const service = getServiceByName(serviceName)
+  if (!service) {
+    throw new ServiceControlError(`Unknown service: ${serviceName}`, 404, 'SERVICE_NOT_FOUND')
+  }
+
+  assertControlsEnabled(service.control)
+
+  if (inFlightOperations.has(serviceName)) {
+    throw new ServiceControlError(
+      'Another control operation is already in progress for this service',
+      409,
+      'OPERATION_IN_PROGRESS'
+    )
+  }
+
+  const startedAt = new Date().toISOString()
+
+  const operation = (async (): Promise<ServiceControlResult> => {
+    try {
+      const { stdout, stderr } = await runControlCommand(action, service.control!)
+      const output = [stdout, stderr].filter(Boolean).join('\n').trim()
+
+      return {
+        service: service.name,
+        action,
+        success: true,
+        output,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      }
+    } catch (error) {
+      if (error instanceof ServiceControlError) {
+        throw error
+      }
+
+      const message = error instanceof Error ? error.message : 'Unknown error'
+      const stdErr = (error as any)?.stderr ?? (error as Error)?.message
+
+      throw new ServiceControlError(
+        message,
+        500,
+        'CONTROL_COMMAND_FAILED',
+        stdErr
+      )
+    }
+  })()
+
+  inFlightOperations.set(serviceName, operation)
+
+  try {
+    return await operation
+  } finally {
+    inFlightOperations.delete(serviceName)
+  }
+}
+
+export function isOperationInProgress(serviceName: string): boolean {
+  return inFlightOperations.has(serviceName)
+}

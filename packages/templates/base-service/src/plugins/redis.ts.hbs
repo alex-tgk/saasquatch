@@ -1,5 +1,5 @@
 import fp from 'fastify-plugin';
-import Redis from 'ioredis';
+import { Redis } from 'ioredis';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -22,7 +22,7 @@ async function redisPlugin(fastify: any) {
     fastify.log.info('Redis connected successfully');
   });
 
-  redis.on('error', (error) => {
+  redis.on('error', (error: Error) => {
     fastify.log.error('Redis connection error:', error);
   });
 
