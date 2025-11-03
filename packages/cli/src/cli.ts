@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import { createInitCommand } from './commands/init.js';
+import { createAddCommand } from './commands/add.js';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import fs from 'fs-extra';
@@ -34,15 +35,7 @@ ${chalk.gray('For more information, visit:')} ${chalk.blue('https://github.com/s
 
   // Add commands
   program.addCommand(createInitCommand());
-
-  // Add future commands placeholder
-  program
-    .command('add <type>')
-    .description('Add a new service, route, or component')
-    .action(async (type: string) => {
-      console.log(chalk.yellow(`\n⚠️  The 'add ${type}' command is not yet implemented.`));
-      console.log(chalk.gray('This feature will be available in a future release.'));
-    });
+  program.addCommand(createAddCommand());
 
   program
     .command('test')
