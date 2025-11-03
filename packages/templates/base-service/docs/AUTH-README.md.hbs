@@ -1,0 +1,377 @@
+{{#if service.features.jwt}}
+# Authentication Service Documentation
+
+## Overview
+
+This service provides production-ready JWT-based authentication with the following features:
+
+- User registration and login
+- JWT access tokens (15-minute expiry)
+- JWT refresh tokens (7-day expiry)
+- Token rotation on refresh
+- Token blacklisting (logout)
+- Account lockout protection (5 attempts, 30-minute cooldown)
+- Rate limiting on auth endpoints
+- Comprehensive security logging
+
+## Quick Start
+
+### Prerequisites
+
+- Redis (for token blacklisting and rate limiting)
+- PostgreSQL or SQLite (for user storage)
+- Node.js 20+
+
+### Environment Variables
+
+See [ENVIRONMENT.md](./ENVIRONMENT.md) for complete configuration reference.
+
+Required variables:
+```bash
+# JWT Configuration
+JWT_SECRET=your-secret-key-here-minimum-32-characters
+
+# Database
+DATABASE_URL={{#if (eq infrastructure.database.type "postgresql")}}postgresql://user:password@localhost:5432/dbname{{else}}./data/{{service.name}}.db{{/if}}
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# Server
+PORT={{service.port}}
+HOST=0.0.0.0
+NODE_ENV=development
+```
+
+### Starting the Service
+
+```bash
+# Install dependencies
+npm install
+
+# Run migrations
+npm run migrate:latest
+
+# Start development server
+npm run dev
+
+# Run tests
+npm test
+```
+
+## API Endpoints
+
+### POST /auth/register
+
+Register a new user account.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!",
+  "name": "John Doe"
+}
+```
+
+**Response (201):**
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "user@example.com",
+    "name": "John Doe",
+    "createdAt": "2024-01-01T00:00:00.000Z",
+    "updatedAt": "2024-01-01T00:00:00.000Z"
+  }
+}
+```
+
+**Rate Limit:** 3 requests per hour
+
+### POST /auth/login
+
+Authenticate user and receive JWT tokens.
+
+**Request:**
+```json
+{
+  "email": "user@example.com",
+  "password": "SecurePassword123!"
+}
+```
+
+**Response (200):**
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": "123e4567-e89b-12d3-a456-426614174000",
+    "email": "user@example.com",
+    "name": "John Doe"
+  }
+}
+```
+
+**Error (401 - Account Lockout):**
+```json
+{
+  "statusCode": 429,
+  "error": "Too Many Requests",
+  "message": "Account temporarily locked due to too many failed login attempts. Please try again in 25 minutes."
+}
+```
+
+**Rate Limit:** 5 requests per 15 minutes
+
+**Security Features:**
+- Account locks after 5 failed attempts
+- 30-minute lockout duration
+- Shows remaining attempts in error messages
+
+### POST /auth/refresh
+
+Refresh access token using refresh token.
+
+**Request:**
+```json
+{
+  "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+**Response (200):**
+```json
+{
+  "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIs..."
+}
+```
+
+**Security Features:**
+- Old refresh token is automatically blacklisted (token rotation)
+- Prevents token reuse attacks
+
+### POST /auth/logout
+
+Logout user and invalidate access token.
+
+**Request Headers:**
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**Response (200):**
+```json
+{
+  "message": "Logout successful"
+}
+```
+
+**Security Features:**
+- Token added to Redis blacklist
+- Blacklist TTL matches token expiry (15 minutes)
+
+### GET /auth/me
+
+Get current authenticated user profile.
+
+**Request Headers:**
+```
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+```
+
+**Response (200):**
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "email": "user@example.com",
+  "name": "John Doe",
+  "createdAt": "2024-01-01T00:00:00.000Z",
+  "updatedAt": "2024-01-01T00:00:00.000Z"
+}
+```
+
+## Security Features
+
+### Token Management
+
+- **Access Tokens:** 15-minute expiry, used for API requests
+- **Refresh Tokens:** 7-day expiry, used to get new access tokens
+- **Token Blacklisting:** Redis-backed, automatic cleanup on expiry
+- **Token Rotation:** Old refresh token invalidated when refreshed
+
+### Account Lockout
+
+- **Trigger:** 5 failed login attempts within 15 minutes
+- **Duration:** 30-minute lockout
+- **Reset:** Successful login clears all attempts
+- **User Feedback:** Shows remaining attempts in error messages
+
+### Rate Limiting
+
+- **Global:** 100 requests per 15 minutes
+- **Login:** 5 requests per 15 minutes
+- **Register:** 3 requests per hour
+- **Implementation:** Redis-backed, distributed-safe
+
+### Audit Logging
+
+All authentication events are logged:
+- User registration
+- Successful logins (with IP address)
+- Failed login attempts
+- Account lockouts
+- Token refreshes
+- Logouts
+
+## Architecture
+
+### Components
+
+1. **TokenService** - Centralized JWT token operations
+   - Token generation (access & refresh)
+   - Token verification
+   - Token revocation (blacklisting)
+   - Automatic cleanup of expired tokens
+
+2. **LoginAttemptService** - Account lockout protection
+   - Failed attempt tracking
+   - Account locking/unlocking
+   - Time-based expiry (15-minute window)
+
+3. **Models** - Type-safe data structures
+   - User: Database entity and response DTO
+   - LoginAttempt: Security audit records
+
+### Data Flow
+
+See [diagrams/auth-flow.mermaid](./diagrams/auth-flow.mermaid) for complete sequence diagrams.
+
+## Testing
+
+### Unit Tests
+
+```bash
+npm test
+```
+
+Test coverage includes:
+- TokenService (100% coverage)
+- LoginAttemptService (100% coverage)
+- Auth routes
+- Model converters
+
+### Integration Tests
+
+```bash
+npm test test/integration/
+```
+
+Integration tests cover:
+- Complete auth flow (register → login → refresh → logout)
+- Account lockout behavior
+- Rate limiting
+- Token blacklisting
+
+## Monitoring
+
+### Key Metrics
+
+Monitor these endpoints for security events:
+
+```bash
+# Login failures (potential brute force)
+curl http://localhost:{{service.port}}/metrics | grep auth_login_failed_total
+
+# Account lockouts
+curl http://localhost:{{service.port}}/metrics | grep auth_account_lockout_total
+
+# Token refreshes
+curl http://localhost:{{service.port}}/metrics | grep auth_token_refresh_total
+```
+
+### Health Checks
+
+```bash
+# Service health
+curl http://localhost:{{service.port}}/health
+
+# Dependency health (includes Redis check)
+curl http://localhost:{{service.port}}/ready
+```
+
+## Production Deployment
+
+### Checklist
+
+- [ ] Set strong JWT_SECRET (minimum 32 characters, random)
+- [ ] Configure Redis for high availability
+- [ ] Enable Redis persistence (RDB + AOF)
+- [ ] Monitor Redis memory usage
+- [ ] Set up log aggregation for audit trails
+- [ ] Configure rate limit thresholds for your traffic
+- [ ] Test account lockout behavior
+- [ ] Verify token blacklist cleanup
+
+### Security Best Practices
+
+1. **JWT Secret Management**
+   - Use strong, random secrets
+   - Rotate secrets periodically
+   - Store in secure key management system
+
+2. **Redis Security**
+   - Enable authentication (requirepass)
+   - Use TLS for connections
+   - Restrict network access
+   - Monitor for suspicious activity
+
+3. **Rate Limiting**
+   - Adjust thresholds based on traffic
+   - Monitor for rate limit violations
+   - Consider IP-based blocking for persistent abuse
+
+4. **Logging**
+   - Log all authentication events
+   - Include IP addresses and user agents
+   - Send logs to SIEM system
+   - Set up alerts for suspicious patterns
+
+## Troubleshooting
+
+### Common Issues
+
+**Issue: Users getting locked out unintentionally**
+- Check if password managers are trying multiple passwords
+- Verify rate limit configuration isn't too strict
+- Review login attempt logs in Redis
+
+**Issue: Tokens not being blacklisted**
+- Verify Redis connection is working
+- Check Redis memory limits
+- Ensure TTL is set correctly
+
+**Issue: Rate limiting not working**
+- Verify Redis plugin is registered before rate limit plugin
+- Check Redis connectivity
+- Review rate limit configuration
+
+## API Documentation
+
+Complete OpenAPI documentation available at:
+```
+http://localhost:{{service.port}}/docs
+```
+
+## Support
+
+For issues or questions:
+1. Check [TROUBLESHOOTING.md](./TROUBLESHOOTING.md)
+2. Review logs for error details
+3. Check Redis connectivity and health
+4. Verify environment variables are set correctly
+{{/if}}

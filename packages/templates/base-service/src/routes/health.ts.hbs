@@ -100,6 +100,26 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
                   required: ['status', 'responseTime'],
                   description: 'NATS connection status',
                 },
+                {{/if}}{{#if service.features.jwt}}tokenService: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'], description: 'Status of the dependency' },
+                    responseTime: { type: 'number', description: 'Response time in milliseconds' },
+                    message: { type: 'string', description: 'Optional error message if down' }
+                  },
+                  required: ['status', 'responseTime'],
+                  description: 'JWT Token Service status',
+                },
+                loginAttemptService: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'], description: 'Status of the dependency' },
+                    responseTime: { type: 'number', description: 'Response time in milliseconds' },
+                    message: { type: 'string', description: 'Optional error message if down' }
+                  },
+                  required: ['status', 'responseTime'],
+                  description: 'Login Attempt Service status',
+                },
                 {{/if}}
               },
             },
@@ -149,6 +169,24 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
                   required: ['status', 'responseTime']
                 },
                 {{/if}}{{#if service.features.messageQueue}}nats: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number' },
+                    message: { type: 'string' }
+                  },
+                  required: ['status', 'responseTime']
+                },
+                {{/if}}{{#if service.features.jwt}}tokenService: {
+                  type: 'object',
+                  properties: {
+                    status: { type: 'string', enum: ['up', 'down'] },
+                    responseTime: { type: 'number' },
+                    message: { type: 'string' }
+                  },
+                  required: ['status', 'responseTime']
+                },
+                loginAttemptService: {
                   type: 'object',
                   properties: {
                     status: { type: 'string', enum: ['up', 'down'] },
@@ -221,6 +259,43 @@ export const healthRoutes: FastifyPluginAsync = async (fastify) => {
         status: 'down',
         responseTime: Date.now() - natsStart,
         message: error instanceof Error ? error.message : 'NATS connection failed',
+      };
+    }
+
+    {{/if}}{{#if service.features.jwt}}// Check TokenService
+    const tokenServiceStart = Date.now();
+    try {
+      // Try to generate a test token
+      const testToken = await fastify.tokenService.generateAccessToken('test-user-id');
+      // Verify it can be decoded (not validating against blacklist)
+      const decoded = fastify.jwt.verify(testToken);
+      checks.tokenService = {
+        status: decoded ? 'up' : 'down',
+        responseTime: Date.now() - tokenServiceStart,
+      };
+    } catch (error) {
+      checks.tokenService = {
+        status: 'down',
+        responseTime: Date.now() - tokenServiceStart,
+        message: error instanceof Error ? error.message : 'TokenService failed',
+      };
+    }
+
+    // Check LoginAttemptService (via Redis)
+    const loginAttemptServiceStart = Date.now();
+    try {
+      // Test Redis connection via LoginAttemptService
+      const testEmail = 'health-check@example.com';
+      const remaining = await fastify.redis.get(`login:attempts:${testEmail}`);
+      checks.loginAttemptService = {
+        status: 'up',
+        responseTime: Date.now() - loginAttemptServiceStart,
+      };
+    } catch (error) {
+      checks.loginAttemptService = {
+        status: 'down',
+        responseTime: Date.now() - loginAttemptServiceStart,
+        message: error instanceof Error ? error.message : 'LoginAttemptService failed',
       };
     }
 

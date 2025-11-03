@@ -1,0 +1,66 @@
+{{#if service.features.jwt}}
+```mermaid
+sequenceDiagram
+    participant User
+    participant Client
+    participant AuthService
+    participant TokenService
+    participant Redis
+    participant Database
+
+    %% Registration Flow
+    User->>Client: Register (email, password, name)
+    Client->>AuthService: POST /auth/register
+    AuthService->>Database: Check if email exists
+    Database-->>AuthService: Not found
+    AuthService->>AuthService: Hash password (bcrypt)
+    AuthService->>Database: Insert user
+    Database-->>AuthService: User created
+    AuthService->>TokenService: generateTokenPair(userId, email)
+    TokenService->>TokenService: Generate access token (15min)
+    TokenService->>TokenService: Generate refresh token (7d)
+    TokenService-->>AuthService: {accessToken, refreshToken}
+    AuthService-->>Client: 201 {accessToken, refreshToken, user}
+    Client-->>User: Registration successful
+
+    %% Login Flow
+    User->>Client: Login (email, password)
+    Client->>AuthService: POST /auth/login
+    AuthService->>Redis: Check account lockout
+    Redis-->>AuthService: Not locked
+    AuthService->>Database: Find user by email
+    Database-->>AuthService: User found
+    AuthService->>AuthService: Verify password (bcrypt)
+    AuthService->>TokenService: generateTokenPair(userId, email)
+    TokenService-->>AuthService: {accessToken, refreshToken}
+    AuthService->>Redis: Clear login attempts
+    AuthService-->>Client: 200 {accessToken, refreshToken, user}
+    Client-->>User: Login successful
+
+    %% Token Refresh Flow
+    User->>Client: Access token expired
+    Client->>AuthService: POST /auth/refresh {refreshToken}
+    AuthService->>TokenService: verifyToken(refreshToken)
+    TokenService->>Redis: Check token blacklist
+    Redis-->>TokenService: Not blacklisted
+    TokenService->>TokenService: Verify JWT signature & expiry
+    TokenService-->>AuthService: Token valid {userId, email}
+    AuthService->>TokenService: generateTokenPair(userId, email)
+    TokenService-->>AuthService: {newAccessToken, newRefreshToken}
+    AuthService->>TokenService: revokeToken(oldRefreshToken)
+    TokenService->>Redis: Add old token to blacklist
+    AuthService-->>Client: 200 {accessToken, refreshToken}
+    Client-->>User: Token refreshed
+
+    %% Logout Flow
+    User->>Client: Logout
+    Client->>AuthService: POST /auth/logout {Bearer token}
+    AuthService->>TokenService: verifyToken(accessToken)
+    TokenService-->>AuthService: Token valid
+    AuthService->>TokenService: revokeToken(accessToken)
+    TokenService->>Redis: Add token to blacklist (15min TTL)
+    TokenService-->>AuthService: Token revoked
+    AuthService-->>Client: 200 {message: "Logout successful"}
+    Client-->>User: Logged out
+```
+{{/if}}

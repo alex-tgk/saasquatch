@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Activity, BarChart3, Database, Layers, MessageSquare, Terminal } from 'lucide-react'
+import { Activity, BarChart3, Database, Layers, MessageSquare, Terminal, Settings } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Badge } from '@/components/ui/badge'
 import { projectConfig } from '@/lib/service-config'
@@ -23,6 +23,11 @@ const navItems: NavItem[] = [
     href: '/services',
     label: 'Services',
     icon: <Activity className="h-4 w-4" />,
+  },
+  {
+    href: '/admin',
+    label: 'Admin',
+    icon: <Settings className="h-4 w-4" />,
   },
   {
     href: '/logs',

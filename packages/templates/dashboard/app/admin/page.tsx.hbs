@@ -1,0 +1,378 @@
+'use client'
+
+import { useState } from 'react'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Code, Play, Trash2, Copy, CheckCircle } from 'lucide-react'
+import { services } from '@/lib/service-config'
+
+interface Endpoint {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  path: string
+  description: string
+  params?: { name: string; type: string; required: boolean }[]
+  body?: string
+}
+
+const serviceEndpoints: Record<string, Endpoint[]> = {
+  'api-gateway': [
+    { method: 'GET', path: '/health', description: 'Health check endpoint' },
+    { method: 'GET', path: '/ready', description: 'Readiness check endpoint' },
+  ],
+  'auth-service': [
+    { method: 'GET', path: '/health', description: 'Health check endpoint' },
+    { method: 'GET', path: '/ready', description: 'Readiness check endpoint' },
+    {
+      method: 'POST',
+      path: '/auth/register',
+      description: 'Register a new user',
+      body: JSON.stringify({ email: '', password: '', name: '' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/auth/login',
+      description: 'Login with email and password',
+      body: JSON.stringify({ email: '', password: '' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/auth/refresh',
+      description: 'Refresh access token',
+      body: JSON.stringify({ refreshToken: '' }, null, 2),
+    },
+    {
+      method: 'POST',
+      path: '/auth/logout',
+      description: 'Logout and invalidate tokens',
+    },
+  ],
+  'user-service': [
+    { method: 'GET', path: '/health', description: 'Health check endpoint' },
+    { method: 'GET', path: '/ready', description: 'Readiness check endpoint' },
+    {
+      method: 'GET',
+      path: '/users',
+      description: 'List all users (requires authentication)',
+    },
+    {
+      method: 'GET',
+      path: '/users/:id',
+      description: 'Get user by ID',
+      params: [{ name: 'id', type: 'string', required: true }],
+    },
+    {
+      method: 'PUT',
+      path: '/users/:id',
+      description: 'Update user',
+      params: [{ name: 'id', type: 'string', required: true }],
+      body: JSON.stringify({ name: '', email: '' }, null, 2),
+    },
+    {
+      method: 'DELETE',
+      path: '/users/:id',
+      description: 'Delete user',
+      params: [{ name: 'id', type: 'string', required: true }],
+    },
+  ],
+}
+
+interface RequestState {
+  loading: boolean
+  response: any
+  error: string | null
+  copied: boolean
+}
+
+export default function AdminPage() {
+  const [requests, setRequests] = useState<Record<string, RequestState>>({})
+  const [bodyInputs, setBodyInputs] = useState<Record<string, string>>({})
+  const [pathParams, setPathParams] = useState<Record<string, Record<string, string>>>({})
+
+  const getMethodColor = (method: string) => {
+    switch (method) {
+      case 'GET':
+        return 'default'
+      case 'POST':
+        return 'success'
+      case 'PUT':
+        return 'warning'
+      case 'DELETE':
+        return 'error'
+      default:
+        return 'secondary'
+    }
+  }
+
+  const getServiceUrl = (serviceName: string) => {
+    const service = services.find(s => s.name === serviceName)
+    if (!service) return `http://localhost:3000`
+    return `http://localhost:${service.port}`
+  }
+
+  const executeRequest = async (serviceName: string, endpoint: Endpoint) => {
+    const requestKey = `${serviceName}-${endpoint.method}-${endpoint.path}`
+
+    setRequests(prev => ({
+      ...prev,
+      [requestKey]: { loading: true, response: null, error: null, copied: false },
+    }))
+
+    try {
+      let path = endpoint.path
+
+      // Replace path parameters
+      if (endpoint.params) {
+        endpoint.params.forEach(param => {
+          const value = pathParams[requestKey]?.[param.name] || ''
+          path = path.replace(`:${param.name}`, value)
+        })
+      }
+
+      const url = `${getServiceUrl(serviceName)}${path}`
+      const options: RequestInit = {
+        method: endpoint.method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      }
+
+      if (endpoint.body && (endpoint.method === 'POST' || endpoint.method === 'PUT' || endpoint.method === 'PATCH')) {
+        options.body = bodyInputs[requestKey] || endpoint.body
+      }
+
+      const response = await fetch(url, options)
+      const data = await response.json()
+
+      setRequests(prev => ({
+        ...prev,
+        [requestKey]: {
+          loading: false,
+          response: { status: response.status, data },
+          error: null,
+          copied: false,
+        },
+      }))
+    } catch (error: any) {
+      setRequests(prev => ({
+        ...prev,
+        [requestKey]: {
+          loading: false,
+          response: null,
+          error: error.message,
+          copied: false,
+        },
+      }))
+    }
+  }
+
+  const clearResponse = (serviceName: string, endpoint: Endpoint) => {
+    const requestKey = `${serviceName}-${endpoint.method}-${endpoint.path}`
+    setRequests(prev => {
+      const newState = { ...prev }
+      delete newState[requestKey]
+      return newState
+    })
+  }
+
+  const copyResponse = (serviceName: string, endpoint: Endpoint) => {
+    const requestKey = `${serviceName}-${endpoint.method}-${endpoint.path}`
+    const request = requests[requestKey]
+
+    if (request?.response) {
+      navigator.clipboard.writeText(JSON.stringify(request.response, null, 2))
+      setRequests(prev => ({
+        ...prev,
+        [requestKey]: { ...request, copied: true },
+      }))
+
+      setTimeout(() => {
+        setRequests(prev => ({
+          ...prev,
+          [requestKey]: { ...prev[requestKey], copied: false },
+        }))
+      }, 2000)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-3xl font-bold tracking-tight">API Admin Panel</h1>
+        <p className="text-muted-foreground">
+          Test and interact with all your service endpoints directly from the dashboard
+        </p>
+      </div>
+
+      {/* Service Tabs */}
+      <Tabs defaultValue={services[0]?.name || 'api-gateway'} className="space-y-4">
+        <TabsList>
+          {services.map(service => (
+            <TabsTrigger key={service.name} value={service.name}>
+              {service.displayName}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
+        {services.map(service => {
+          const endpoints = serviceEndpoints[service.name] || []
+
+          return (
+            <TabsContent key={service.name} value={service.name} className="space-y-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Service Information</CardTitle>
+                  <CardDescription>
+                    Base URL: <code className="text-primary font-mono">{getServiceUrl(service.name)}</code>
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+
+              {endpoints.map((endpoint, idx) => {
+                const requestKey = `${service.name}-${endpoint.method}-${endpoint.path}`
+                const request = requests[requestKey]
+
+                return (
+                  <Card key={idx}>
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={getMethodColor(endpoint.method)}>
+                              {endpoint.method}
+                            </Badge>
+                            <code className="text-sm font-mono">{endpoint.path}</code>
+                          </div>
+                          <CardDescription>{endpoint.description}</CardDescription>
+                        </div>
+                        <div className="flex gap-2">
+                          {request?.response && (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => copyResponse(service.name, endpoint)}
+                              >
+                                {request.copied ? (
+                                  <CheckCircle className="h-4 w-4" />
+                                ) : (
+                                  <Copy className="h-4 w-4" />
+                                )}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => clearResponse(service.name, endpoint)}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
+                          )}
+                          <Button
+                            size="sm"
+                            onClick={() => executeRequest(service.name, endpoint)}
+                            disabled={request?.loading}
+                          >
+                            <Play className="mr-2 h-4 w-4" />
+                            {request?.loading ? 'Sending...' : 'Execute'}
+                          </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+
+                    <CardContent className="space-y-4">
+                      {/* Path Parameters */}
+                      {endpoint.params && endpoint.params.length > 0 && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Path Parameters</label>
+                          <div className="grid gap-2">
+                            {endpoint.params.map(param => (
+                              <div key={param.name} className="flex gap-2 items-center">
+                                <code className="text-sm font-mono bg-muted px-2 py-1 rounded">
+                                  {param.name}
+                                </code>
+                                <Input
+                                  placeholder={`${param.type}${param.required ? ' (required)' : ''}`}
+                                  value={pathParams[requestKey]?.[param.name] || ''}
+                                  onChange={(e) => {
+                                    setPathParams(prev => ({
+                                      ...prev,
+                                      [requestKey]: {
+                                        ...prev[requestKey],
+                                        [param.name]: e.target.value,
+                                      },
+                                    }))
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Request Body */}
+                      {endpoint.body && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Request Body (JSON)</label>
+                          <textarea
+                            className="w-full min-h-[120px] p-3 rounded-md border bg-background font-mono text-sm"
+                            value={bodyInputs[requestKey] || endpoint.body}
+                            onChange={(e) => {
+                              setBodyInputs(prev => ({
+                                ...prev,
+                                [requestKey]: e.target.value,
+                              }))
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {/* Response */}
+                      {request?.response && (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">Response</label>
+                            <Badge variant={request.response.status < 400 ? 'success' : 'error'}>
+                              Status {request.response.status}
+                            </Badge>
+                          </div>
+                          <pre className="p-4 rounded-md bg-muted overflow-auto max-h-[400px]">
+                            <code className="text-sm font-mono">
+                              {JSON.stringify(request.response.data, null, 2)}
+                            </code>
+                          </pre>
+                        </div>
+                      )}
+
+                      {/* Error */}
+                      {request?.error && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium text-error">Error</label>
+                          <div className="p-4 rounded-md bg-error/10 text-error">
+                            <code className="text-sm font-mono">{request.error}</code>
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                )
+              })}
+
+              {endpoints.length === 0 && (
+                <Card>
+                  <CardContent className="py-8 text-center text-muted-foreground">
+                    <Code className="mx-auto h-12 w-12 mb-2 opacity-50" />
+                    <p>No endpoints configured for this service yet.</p>
+                  </CardContent>
+                </Card>
+              )}
+            </TabsContent>
+          )
+        })}
+      </Tabs>
+    </div>
+  )
+}

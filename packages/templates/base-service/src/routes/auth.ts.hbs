@@ -2,7 +2,11 @@ import { FastifyPluginAsync } from 'fastify';
 import { Type, Static } from '@sinclair/typebox';
 import bcrypt from 'bcrypt';
 import crypto from 'crypto';
-{{#if features.messageQueue}}
+import { User, UserResponse, toUserResponse, RegisterRequest, LoginRequest } from '../models/index.js';
+import { validatePassword, getPasswordRequirementsText } from '../utils/password-validator.js';
+import { AuditLogService } from '../services/audit-log.service.js';
+{{#if features.cache}}import { LoginAttemptService } from '../services/login-attempt.service.js';
+{{/if}}{{#if features.messageQueue}}
 import {
   publishUserRegistered,
   publishUserLoggedIn,
@@ -13,9 +17,6 @@ import {
 
 // Constants
 const SALT_ROUNDS = 10;
-const ACCESS_TOKEN_EXPIRY = '15m';
-const REFRESH_TOKEN_EXPIRY = '7d';
-const TOKEN_BLACKLIST_PREFIX = 'blacklist:';
 
 // TypeBox schemas for type-safe validation
 const RegisterSchema = Type.Object({
@@ -54,34 +55,6 @@ const ErrorResponseSchema = Type.Object({
 });
 
 // Helper functions
-interface User {
-  id: string;
-  email: string;
-  name: string;
-  password_hash: string;
-  created_at: Date;
-  updated_at: Date;
-  last_login_at?: Date;
-}
-
-interface UserResponse {
-  id: string;
-  email: string;
-  name: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-function mapUserToResponse(user: User): UserResponse {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    createdAt: user.created_at.toISOString(),
-    updatedAt: user.updated_at.toISOString(),
-  };
-}
-
 async function hashPassword(password: string): Promise<string> {
   return bcrypt.hash(password, SALT_ROUNDS);
 }
@@ -91,9 +64,18 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
 }
 
 export const authRoutes: FastifyPluginAsync = async (fastify) => {
+  // Initialize AuditLogService
+  const auditLog = new AuditLogService(fastify);
+
   // POST /auth/register - Register a new user
   fastify.post('/auth/register', {
-    schema: {
+    {{#if features.cache}}config: {
+      rateLimit: {
+        max: 3,
+        timeWindow: '1 hour',
+      },
+    },
+    {{/if}}schema: {
       description: 'Register a new user account',
       tags: ['Authentication'],
       summary: 'Register new user',
@@ -143,14 +125,36 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     },
   }, async (request, reply) => {
     const { email, password, name } = request.body as Static<typeof RegisterSchema>;
+    const ip = (request.headers['x-forwarded-for'] as string) || request.ip;
 
     try {
+      // Validate password strength
+      const passwordValidation = validatePassword(password);
+      if (!passwordValidation.valid) {
+        await auditLog.logEvent('user.registration_failed', {
+          email,
+          reason: 'weak_password',
+          errors: passwordValidation.errors,
+        }, undefined, { ip, headers: request.headers });
+
+        return reply.code(400).send({
+          statusCode: 400,
+          error: 'Bad Request',
+          message: `Password does not meet requirements. ${passwordValidation.errors.join(' ')} ${getPasswordRequirementsText()}`,
+        });
+      }
+
       // Check if user already exists
       const existingUser = await fastify.db('users')
         .where({ email })
         .first();
 
       if (existingUser) {
+        await auditLog.logEvent('user.registration_failed', {
+          email,
+          reason: 'email_exists',
+        }, undefined, { ip, headers: request.headers });
+
         return reply.code(400).send({
           statusCode: 400,
           error: 'Bad Request',
@@ -179,32 +183,54 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         .where({ id: userId })
         .first() as User;
 
-      // Generate JWT tokens
+      {{#if service.features.cache}}
+      // Generate JWT tokens using TokenService
+      const { accessToken, refreshToken } = await fastify.tokenService.generateTokenPair(
+        user.id,
+        user.email
+      );
+      {{else}}
+      // Generate JWT tokens (fallback without TokenService)
       const accessToken = fastify.jwt.sign(
         { id: user.id, email: user.email },
-        { expiresIn: ACCESS_TOKEN_EXPIRY }
+        { expiresIn: '15m' }
       );
 
       const refreshToken = fastify.jwt.sign(
         { id: user.id, email: user.email, type: 'refresh' },
-        { expiresIn: REFRESH_TOKEN_EXPIRY }
+        { expiresIn: '7d' }
       );
+      {{/if}}
 
       fastify.log.info({ userId: user.id, email: user.email }, 'User registered successfully');
+
+      // Log registration in audit log
+      await auditLog.logRegistration(user.id, user.email, ip);
 
       {{#if features.messageQueue}}
       // Publish user registered event to NATS (fire-and-forget)
       publishUserRegistered(fastify.nats, user.id, user.email, user.name, fastify.log);
       {{/if}}
 
+      // Track registration metric
+      {{#if service.features.jwt}}if (fastify.authMetrics) {
+        fastify.authMetrics.registrationTotal.inc();
+      }
+      {{/if}}
+
       reply.code(201);
       return {
         accessToken,
         refreshToken,
-        user: mapUserToResponse(user),
+        user: toUserResponse(user),
       };
     } catch (error) {
       fastify.log.error({ error, email }, 'Registration failed');
+      await auditLog.logEvent('user.registration_failed', {
+        email,
+        reason: 'internal_error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, undefined, { ip, headers: request.headers });
       return reply.code(500).send({
         statusCode: 500,
         error: 'Internal Server Error',
@@ -215,7 +241,13 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
   // POST /auth/login - Login user
   fastify.post('/auth/login', {
-    schema: {
+    {{#if features.cache}}config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: '15 minutes',
+      },
+    },
+    {{/if}}schema: {
       description: 'Authenticate user and receive JWT tokens',
       tags: ['Authentication'],
       summary: 'User login',
@@ -252,7 +284,20 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
               },
             },
           },
-        },
+        },{{#if features.cache}}
+        429: {
+          description: 'Too many failed login attempts - Account temporarily locked',
+          content: {
+            'application/json': {
+              schema: ErrorResponseSchema,
+              example: {
+                statusCode: 429,
+                error: 'Too Many Requests',
+                message: 'Account temporarily locked due to too many failed login attempts. Please try again in 30 minutes.',
+              },
+            },
+          },
+        },{{/if}}
         500: {
           description: 'Internal server error',
           content: {
@@ -265,14 +310,60 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     },
   }, async (request, reply) => {
     const { email, password } = request.body as Static<typeof LoginSchema>;
+    {{#if features.cache}}const ip = (request.headers['x-forwarded-for'] as string) || request.ip;
+    {{/if}}
 
     try {
-      // Find user by email
+      {{#if features.cache}}// Initialize LoginAttemptService
+      const loginAttemptService = new LoginAttemptService(fastify, fastify.redis);
+
+      // Check if account is locked
+      const isLocked = await loginAttemptService.isAccountLocked(email);
+
+      if (isLocked) {
+        const timeRemaining = await loginAttemptService.getLockoutTimeRemaining(email);
+        const minutesRemaining = Math.ceil(timeRemaining / 60);
+
+        // Log account lockout
+        await auditLog.logAccountLocked(email, ip);
+
+        return reply.code(429).send({
+          statusCode: 429,
+          error: 'Too Many Requests',
+          message: `Account temporarily locked due to too many failed login attempts. Please try again in ${minutesRemaining} minutes.`,
+        });
+      }
+
+      {{/if}}// Find user by email
       const user = await fastify.db('users')
         .where({ email })
         .first() as User | undefined;
 
       if (!user) {
+        {{#if features.cache}}// Record failed attempt
+        await loginAttemptService.recordAttempt(email, false, ip);
+        const remaining = await loginAttemptService.getRemainingAttempts(email);
+
+        // Log failed login attempt
+        await auditLog.logFailedLogin(email, 'user_not_found', ip);
+
+        // Track failed login metric
+        {{#if service.features.jwt}}if (fastify.authMetrics) {
+          fastify.authMetrics.loginTotal.inc({ status: 'failure' });
+        }
+        {{/if}}
+
+        if (remaining > 0) {
+          return reply.code(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: `Invalid email or password. ${remaining} attempts remaining before account lockout.`,
+          });
+        }
+        {{/if}}
+        // Log failed login attempt
+        await auditLog.logFailedLogin(email, 'user_not_found', ip);
+
         return reply.code(401).send({
           statusCode: 401,
           error: 'Unauthorized',
@@ -284,6 +375,36 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       const isPasswordValid = await verifyPassword(password, user.password_hash);
 
       if (!isPasswordValid) {
+        {{#if features.cache}}// Record failed attempt
+        await loginAttemptService.recordAttempt(email, false, ip);
+        const remaining = await loginAttemptService.getRemainingAttempts(email);
+
+        // Log failed login attempt
+        await auditLog.logFailedLogin(email, 'invalid_password', ip);
+
+        // Track failed login metric
+        {{#if service.features.jwt}}if (fastify.authMetrics) {
+          fastify.authMetrics.loginTotal.inc({ status: 'failure' });
+        }
+        {{/if}}
+
+        if (remaining > 0) {
+          return reply.code(401).send({
+            statusCode: 401,
+            error: 'Unauthorized',
+            message: `Invalid email or password. ${remaining} attempts remaining before account lockout.`,
+          });
+        }
+        {{/if}}
+        // Log failed login attempt
+        await auditLog.logFailedLogin(email, 'invalid_password', ip);
+
+        // Track failed login metric
+        {{#if service.features.jwt}}if (fastify.authMetrics) {
+          fastify.authMetrics.loginTotal.inc({ status: 'failure' });
+        }
+        {{/if}}
+
         return reply.code(401).send({
           statusCode: 401,
           error: 'Unauthorized',
@@ -291,39 +412,64 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
+      {{#if features.cache}}// Record successful login and clear attempts
+      await loginAttemptService.recordAttempt(email, true, ip);
+      {{/if}}
+
       // Update last login timestamp
       await fastify.db('users')
         .where({ id: user.id })
         .update({ last_login_at: new Date() });
 
-      // Generate JWT tokens
+      {{#if service.features.cache}}
+      // Generate JWT tokens using TokenService
+      const { accessToken, refreshToken } = await fastify.tokenService.generateTokenPair(
+        user.id,
+        user.email
+      );
+      {{else}}
+      // Generate JWT tokens (fallback without TokenService)
       const accessToken = fastify.jwt.sign(
         { id: user.id, email: user.email },
-        { expiresIn: ACCESS_TOKEN_EXPIRY }
+        { expiresIn: '15m' }
       );
 
       const refreshToken = fastify.jwt.sign(
         { id: user.id, email: user.email, type: 'refresh' },
-        { expiresIn: REFRESH_TOKEN_EXPIRY }
+        { expiresIn: '7d' }
       );
+      {{/if}}
 
       fastify.log.info({ userId: user.id, email: user.email }, 'User logged in successfully');
 
+      // Log successful login in audit log
+      const userAgent = request.headers['user-agent'] as string;
+      await auditLog.logLogin(user.id, user.email, ip, userAgent);
+
+      // Track successful login metric
+      {{#if service.features.jwt}}if (fastify.authMetrics) {
+        fastify.authMetrics.loginTotal.inc({ status: 'success' });
+      }
+      {{/if}}
+
       {{#if features.messageQueue}}
       // Publish user logged in event to NATS (fire-and-forget)
-      // Extract IP and user agent if available
-      const ip = request.headers['x-forwarded-for'] as string || request.ip;
-      const userAgent = request.headers['user-agent'];
       publishUserLoggedIn(fastify.nats, user.id, user.email, fastify.log, ip, userAgent);
       {{/if}}
 
       return {
         accessToken,
         refreshToken,
-        user: mapUserToResponse(user),
+        user: toUserResponse(user),
       };
     } catch (error) {
       fastify.log.error({ error, email }, 'Login failed');
+      const ip = (request.headers['x-forwarded-for'] as string) || request.ip;
+      await auditLog.logEvent('user.login_failed', {
+        email,
+        reason: 'internal_error',
+        error: error instanceof Error ? error.message : 'Unknown error',
+      }, undefined, { ip, headers: request.headers });
       return reply.code(500).send({
         statusCode: 500,
         error: 'Internal Server Error',
@@ -382,6 +528,7 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     const { refreshToken } = request.body as Static<typeof RefreshTokenSchema>;
 
     try {
+      {{#if service.features.cache}}
       // Verify refresh token
       const decoded = fastify.jwt.verify(refreshToken) as { id: string; email: string; type?: string };
 
@@ -394,41 +541,64 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      // Check if refresh token is blacklisted (logged out)
-      {{#if features.cache}}
-      const isBlacklisted = await fastify.redis.get(`${TOKEN_BLACKLIST_PREFIX}${refreshToken}`);
-      if (isBlacklisted) {
+      // Use TokenService to refresh access token
+      const newAccessToken = await fastify.tokenService.refreshAccessToken(
+        refreshToken,
+        decoded.email
+      );
+
+      // Generate new refresh token (token rotation for security)
+      const newRefreshToken = await fastify.tokenService.generateRefreshToken(decoded.id);
+
+      // Revoke old refresh token (prevent reuse)
+      await fastify.tokenService.revokeToken(refreshToken);
+
+      fastify.log.info({ userId: decoded.id }, 'Token refreshed successfully');
+
+      // Log token refresh in audit log
+      await auditLog.logTokenRefresh(decoded.id);
+
+      // Track token refresh metric
+      {{#if service.features.jwt}}if (fastify.authMetrics) {
+        fastify.authMetrics.tokenRefreshTotal.inc();
+      }
+      {{/if}}
+      {{else}}
+      // Fallback without TokenService
+      const decoded = fastify.jwt.verify(refreshToken) as { id: string; email: string; type?: string };
+
+      // Check if token is a refresh token
+      if (decoded.type !== 'refresh') {
         return reply.code(401).send({
           statusCode: 401,
           error: 'Unauthorized',
-          message: 'Token has been invalidated. Please log in again.',
+          message: 'Invalid token type. Please provide a valid refresh token.',
         });
       }
-      {{/if}}
 
       // Generate new access token
       const newAccessToken = fastify.jwt.sign(
         { id: decoded.id, email: decoded.email },
-        { expiresIn: ACCESS_TOKEN_EXPIRY }
+        { expiresIn: '15m' }
       );
 
       // Generate new refresh token (token rotation for security)
       const newRefreshToken = fastify.jwt.sign(
         { id: decoded.id, email: decoded.email, type: 'refresh' },
-        { expiresIn: REFRESH_TOKEN_EXPIRY }
+        { expiresIn: '7d' }
       );
-
-      {{#if features.cache}}
-      // Blacklist old refresh token (prevent reuse)
-      await fastify.redis.set(
-        `${TOKEN_BLACKLIST_PREFIX}${refreshToken}`,
-        '1',
-        'EX',
-        7 * 24 * 60 * 60 // 7 days
-      );
-      {{/if}}
 
       fastify.log.info({ userId: decoded.id }, 'Token refreshed successfully');
+
+      // Log token refresh in audit log
+      await auditLog.logTokenRefresh(decoded.id);
+
+      // Track token refresh metric
+      {{#if service.features.jwt}}if (fastify.authMetrics) {
+        fastify.authMetrics.tokenRefreshTotal.inc();
+      }
+      {{/if}}
+      {{/if}}
 
       {{#if features.messageQueue}}
       // Publish token refreshed event to NATS (fire-and-forget)
@@ -513,18 +683,22 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
       // Verify token
       const decoded = fastify.jwt.verify(token) as { id: string; email: string };
 
-      {{#if features.cache}}
-      // Add token to Redis blacklist
-      // Token expiry is 15 minutes, so blacklist for 15 minutes
-      await fastify.redis.set(
-        `${TOKEN_BLACKLIST_PREFIX}${token}`,
-        '1',
-        'EX',
-        15 * 60 // 15 minutes in seconds
-      );
+      {{#if service.features.cache}}
+      // Revoke token using TokenService
+      await fastify.tokenService.revokeToken(token);
       {{/if}}
 
       fastify.log.info({ userId: decoded.id }, 'User logged out successfully');
+
+      // Log logout in audit log
+      const ip = (request.headers['x-forwarded-for'] as string) || request.ip;
+      await auditLog.logLogout(decoded.id, ip);
+
+      // Track logout metric
+      {{#if service.features.jwt}}if (fastify.authMetrics) {
+        fastify.authMetrics.logoutTotal.inc();
+      }
+      {{/if}}
 
       {{#if features.messageQueue}}
       // Publish user logged out event to NATS (fire-and-forget)
@@ -621,25 +795,23 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
 
       const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
-      // Verify JWT token
-      const decoded = fastify.jwt.verify<{ id: string; email: string }>(token);
+      {{#if service.features.cache}}
+      // Verify JWT token using TokenService (checks blacklist)
+      const decoded = await fastify.tokenService.verifyToken(token) as { userId: string; email: string };
 
-      {{#if features.cache}}
-      // Check if token is blacklisted (logged out)
-      const isBlacklisted = await fastify.redis.get(`${TOKEN_BLACKLIST_PREFIX}${token}`);
-      if (isBlacklisted) {
-        return reply.code(401).send({
-          statusCode: 401,
-          error: 'Unauthorized',
-          message: 'Token has been revoked. Please log in again.',
-        });
-      }
-      {{/if}}
+      // Fetch user from database
+      const user = await fastify.db('users')
+        .where({ id: decoded.userId })
+        .first() as User | undefined;
+      {{else}}
+      // Verify JWT token (fallback without TokenService)
+      const decoded = fastify.jwt.verify<{ id: string; email: string }>(token);
 
       // Fetch user from database
       const user = await fastify.db('users')
         .where({ id: decoded.id })
         .first() as User | undefined;
+      {{/if}}
 
       if (!user) {
         return reply.code(404).send({
@@ -649,8 +821,8 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
         });
       }
 
-      // Return user profile (password_hash is excluded by mapUserToResponse)
-      return mapUserToResponse(user);
+      // Return user profile (password_hash is excluded by toUserResponse)
+      return toUserResponse(user);
     } catch (error) {
       fastify.log.error({ error }, 'Failed to get user profile');
 

@@ -1,0 +1,58 @@
+{{#if service.features.jwt}}
+```mermaid
+graph TB
+    subgraph Client
+        Browser[Browser/Mobile App]
+    end
+
+    subgraph "Rate Limiting Layer"
+        GlobalLimit[Global: 100 req/15min]
+        LoginLimit[Login: 5 req/15min]
+        RegisterLimit[Register: 3 req/hour]
+    end
+
+    subgraph "Authentication Service"
+        AuthRoutes[Auth Routes]
+        TokenService[Token Service]
+        LoginAttemptService[Login Attempt Service]
+        Models[Models: User, LoginAttempt]
+    end
+
+    subgraph "Redis Cache"
+        TokenBlacklist[Token Blacklist<br/>token:blacklist:*]
+        LoginAttempts[Login Attempts<br/>login:attempts:*]
+        AccountLockout[Account Lockout<br/>login:lockout:*]
+        RateLimitCache[Rate Limit Counters]
+    end
+
+    subgraph Database
+        UsersTable[users table]
+    end
+
+    Browser -->|HTTP Request| GlobalLimit
+    GlobalLimit --> LoginLimit
+    GlobalLimit --> RegisterLimit
+    LoginLimit --> AuthRoutes
+    RegisterLimit --> AuthRoutes
+
+    AuthRoutes --> TokenService
+    AuthRoutes --> LoginAttemptService
+    AuthRoutes --> Models
+
+    TokenService -->|Check/Add Blacklist| TokenBlacklist
+    LoginAttemptService -->|Track Attempts| LoginAttempts
+    LoginAttemptService -->|Lock/Check| AccountLockout
+
+    GlobalLimit -->|Store Counters| RateLimitCache
+    LoginLimit -->|Store Counters| RateLimitCache
+    RegisterLimit -->|Store Counters| RateLimitCache
+
+    Models -->|CRUD Operations| UsersTable
+
+    style TokenBlacklist fill:#ff9999
+    style LoginAttempts fill:#ff9999
+    style AccountLockout fill:#ff9999
+    style RateLimitCache fill:#99ccff
+    style UsersTable fill:#99ff99
+```
+{{/if}}

@@ -62,6 +62,46 @@ const metricsPluginAsync: FastifyPluginAsync = async (fastify) => {
     },
   });
 
+  {{#if service.features.jwt}}
+  // Auth-specific metrics
+  const promClient = fastify.metrics.client;
+
+  const authLoginTotal = new promClient.Counter({
+    name: 'auth_login_total',
+    help: 'Total number of login attempts',
+    labelNames: ['status'], // 'success' or 'failure'
+  });
+
+  const authRegistrationTotal = new promClient.Counter({
+    name: 'auth_registration_total',
+    help: 'Total number of user registrations',
+  });
+
+  const authTokenRefreshTotal = new promClient.Counter({
+    name: 'auth_token_refresh_total',
+    help: 'Total number of token refreshes',
+  });
+
+  const authLogoutTotal = new promClient.Counter({
+    name: 'auth_logout_total',
+    help: 'Total number of logouts',
+  });
+
+  const authAccountLockoutTotal = new promClient.Counter({
+    name: 'auth_account_lockout_total',
+    help: 'Total number of account lockouts',
+  });
+
+  // Decorate fastify with auth metrics
+  fastify.decorate('authMetrics', {
+    loginTotal: authLoginTotal,
+    registrationTotal: authRegistrationTotal,
+    tokenRefreshTotal: authTokenRefreshTotal,
+    logoutTotal: authLogoutTotal,
+    accountLockoutTotal: authAccountLockoutTotal,
+  });
+  {{/if}}
+
   // JSON metrics endpoint for dashboard
   fastify.get('/metrics/json', async (request, reply) => {
     try {

@@ -1,0 +1,86 @@
+import { FastifyInstance } from 'fastify';
+
+export interface AuditLogEntry {
+  timestamp: Date;
+  userId?: string;
+  event: string;
+  details: Record<string, any>;
+  ip?: string;
+  userAgent?: string;
+}
+
+export class AuditLogService {
+  constructor(private readonly fastify: FastifyInstance) {}
+
+  async logEvent(
+    event: string,
+    details: Record<string, any>,
+    userId?: string,
+    request?: { ip: string; headers: Record<string, string | string[] | undefined> }
+  ): Promise<void> {
+    const entry: AuditLogEntry = {
+      timestamp: new Date(),
+      event,
+      details,
+      userId,
+      ip: request?.ip,
+      userAgent: request?.headers['user-agent'] as string,
+    };
+
+    // Log to Pino structured logger
+    this.fastify.log.info(
+      {
+        audit: true,
+        event: entry.event,
+        userId: entry.userId,
+        details: entry.details,
+        ip: entry.ip,
+        userAgent: entry.userAgent,
+      },
+      `Audit: ${event}`
+    );
+
+    // In production, you might also want to:
+    // 1. Write to a separate audit log file
+    // 2. Send to a SIEM system
+    // 3. Store in a dedicated audit table
+  }
+
+  // Convenience methods for common events
+  async logRegistration(userId: string, email: string, ip?: string): Promise<void> {
+    await this.logEvent('user.registered', { userId, email }, userId, { ip: ip || '', headers: {} });
+  }
+
+  async logLogin(userId: string, email: string, ip?: string, userAgent?: string): Promise<void> {
+    await this.logEvent('user.logged_in', { userId, email }, userId, {
+      ip: ip || '',
+      headers: { 'user-agent': userAgent }
+    });
+  }
+
+  async logFailedLogin(email: string, reason: string, ip?: string): Promise<void> {
+    await this.logEvent('user.login_failed', { email, reason }, undefined, {
+      ip: ip || '',
+      headers: {}
+    });
+  }
+
+  async logLogout(userId: string, ip?: string): Promise<void> {
+    await this.logEvent('user.logged_out', { userId }, userId, { ip: ip || '', headers: {} });
+  }
+
+  async logAccountLocked(email: string, ip?: string): Promise<void> {
+    await this.logEvent('user.account_locked', { email }, undefined, {
+      ip: ip || '',
+      headers: {}
+    });
+  }
+
+  async logTokenRefresh(userId: string): Promise<void> {
+    await this.logEvent('user.token_refreshed', { userId }, userId);
+  }
+
+  async logPasswordChange(userId: string): Promise<void> {
+    await this.logEvent('user.password_changed', { userId }, userId);
+  }
+}

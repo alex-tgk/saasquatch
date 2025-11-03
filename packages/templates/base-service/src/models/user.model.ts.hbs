@@ -1,0 +1,78 @@
+/**
+ * User entity representing a registered user account
+ */
+export interface User {
+  /** Unique user identifier (UUID) */
+  id: string;
+
+  /** User's email address (unique) */
+  email: string;
+
+  /** User's full name */
+  name: string;
+
+  /** Bcrypt hashed password */
+  password_hash: string;
+
+  /** Account creation timestamp */
+  created_at: Date;
+
+  /** Last update timestamp */
+  updated_at: Date;
+
+  /** Last successful login timestamp */
+  last_login_at?: Date;
+
+  /** Whether email is verified */
+  email_verified?: boolean;
+
+  /** Account status: active, suspended, deleted */
+  status?: 'active' | 'suspended' | 'deleted';
+}
+
+/**
+ * User response DTO (excludes sensitive fields like password_hash)
+ */
+export interface UserResponse {
+  id: string;
+  email: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  lastLoginAt?: string;
+  emailVerified?: boolean;
+  status?: 'active' | 'suspended' | 'deleted';
+}
+
+/**
+ * Convert database User entity to UserResponse DTO
+ */
+export function toUserResponse(user: User): UserResponse {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    createdAt: user.created_at.toISOString(),
+    updatedAt: user.updated_at.toISOString(),
+    lastLoginAt: user.last_login_at?.toISOString(),
+    emailVerified: user.email_verified,
+    status: user.status,
+  };
+}
+
+/**
+ * User registration request payload
+ */
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  name: string;
+}
+
+/**
+ * User login request payload
+ */
+export interface LoginRequest {
+  email: string;
+  password: string;
+}

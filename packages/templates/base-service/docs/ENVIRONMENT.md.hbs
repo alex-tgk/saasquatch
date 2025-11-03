@@ -1,0 +1,204 @@
+{{#if service.features.jwt}}
+# Environment Variables
+
+Complete reference for all environment variables used by the authentication service.
+
+## Required Variables
+
+### JWT_SECRET
+- **Required:** Yes
+- **Type:** String
+- **Minimum Length:** 32 characters
+- **Description:** Secret key used for signing JWT tokens
+- **Example:** `JWT_SECRET=your-secret-key-here-at-least-32-characters-long`
+- **Security:** Must be cryptographically random. Rotate periodically.
+
+### DATABASE_URL
+- **Required:** Yes (if using PostgreSQL)
+- **Type:** Connection string
+- **Description:** {{#if (eq infrastructure.database.type "postgresql")}}PostgreSQL connection URL{{else}}SQLite database file path{{/if}}
+- **Format:** {{#if (eq infrastructure.database.type "postgresql")}}`postgresql://[user[:password]@][host][:port][/dbname][?param1=value1&...]`{{else}}`./data/database.db`{{/if}}
+- **Example:** {{#if (eq infrastructure.database.type "postgresql")}}`DATABASE_URL=postgresql://postgres:password@localhost:5432/authdb`{{else}}`DATABASE_URL=./data/{{service.name}}.db`{{/if}}
+
+### REDIS_URL
+- **Required:** Yes (for token blacklisting and rate limiting)
+- **Type:** Connection string
+- **Description:** Redis connection URL
+- **Format:** `redis://[password@]host[:port][/db-number]`
+- **Example:** `REDIS_URL=redis://localhost:6379`
+
+## Optional Variables
+
+### PORT
+- **Default:** {{service.port}}
+- **Type:** Number
+- **Description:** HTTP server port
+- **Example:** `PORT={{service.port}}`
+
+### HOST
+- **Default:** 0.0.0.0
+- **Type:** String
+- **Description:** HTTP server host binding
+- **Example:** `HOST=0.0.0.0`
+
+### NODE_ENV
+- **Default:** development
+- **Type:** String
+- **Values:** `development`, `production`, `test`
+- **Description:** Application environment
+- **Example:** `NODE_ENV=production`
+
+### LOG_LEVEL
+- **Default:** info
+- **Type:** String
+- **Values:** `fatal`, `error`, `warn`, `info`, `debug`, `trace`
+- **Description:** Logging verbosity
+- **Example:** `LOG_LEVEL=info`
+
+### CORS_ORIGIN
+- **Default:** true (allow all)
+- **Type:** String or Boolean
+- **Description:** CORS allowed origins
+- **Examples:**
+  - `CORS_ORIGIN=https://example.com`
+  - `CORS_ORIGIN=https://example.com,https://app.example.com`
+  - `CORS_ORIGIN=true` (allow all, development only)
+
+## Security Configuration
+
+### Token Expiry (TokenService)
+
+These are hardcoded in TokenService but can be customized:
+
+```typescript
+// In src/services/token.service.ts
+private readonly ACCESS_TOKEN_EXPIRY = '15m';  // 15 minutes
+private readonly REFRESH_TOKEN_EXPIRY = '7d';  // 7 days
+```
+
+### Account Lockout (LoginAttemptService)
+
+These are hardcoded but can be customized:
+
+```typescript
+// In src/services/login-attempt.service.ts
+private readonly MAX_ATTEMPTS = 5;                // Failed attempts before lockout
+private readonly LOCKOUT_DURATION = 30 * 60;      // 30 minutes in seconds
+private readonly ATTEMPT_WINDOW = 15 * 60;        // 15-minute rolling window
+```
+
+### Rate Limiting
+
+Global rate limit (can be overridden per route):
+
+```typescript
+// In src/plugins/rate-limit.ts
+max: 100,                 // Maximum requests
+timeWindow: '15 minutes'  // Time window
+```
+
+## Development Setup
+
+Create a `.env` file in the service root:
+
+```bash
+# Development environment
+NODE_ENV=development
+PORT={{service.port}}
+HOST=0.0.0.0
+LOG_LEVEL=debug
+
+# JWT
+JWT_SECRET=dev-secret-key-change-in-production-minimum-32-chars
+
+# Database ({{infrastructure.database.type}})
+DATABASE_URL={{#if (eq infrastructure.database.type "postgresql")}}postgresql://postgres:postgres@localhost:5432/authdb{{else}}./data/{{service.name}}.db{{/if}}
+
+# Redis
+REDIS_URL=redis://localhost:6379
+
+# CORS (allow all in development)
+CORS_ORIGIN=true
+```
+
+## Production Setup
+
+```bash
+# Production environment
+NODE_ENV=production
+PORT={{service.port}}
+HOST=0.0.0.0
+LOG_LEVEL=info
+
+# JWT (use strong, random secret)
+JWT_SECRET=${VAULT_JWT_SECRET}
+
+# Database (use connection pooling)
+DATABASE_URL={{#if (eq infrastructure.database.type "postgresql")}}postgresql://user:pass@db.example.com:5432/authdb?pool_max=20{{else}}./data/{{service.name}}.db{{/if}}
+
+# Redis (use TLS and authentication)
+REDIS_URL=rediss://user:pass@redis.example.com:6380
+
+# CORS (restrict to your domains)
+CORS_ORIGIN=https://app.example.com,https://api.example.com
+```
+
+## Testing Setup
+
+```bash
+# Test environment
+NODE_ENV=test
+PORT={{add service.port 1}}
+LOG_LEVEL=silent
+
+# JWT (test secret)
+JWT_SECRET=test-secret-key-for-testing-purposes-only
+
+# Database (use test database)
+DATABASE_URL={{#if (eq infrastructure.database.type "postgresql")}}postgresql://postgres:postgres@localhost:5432/authdb_test{{else}}./data/{{service.name}}_test.db{{/if}}
+
+# Redis (use separate Redis database)
+REDIS_URL=redis://localhost:6379/1
+
+# CORS
+CORS_ORIGIN=true
+```
+
+## Docker Setup
+
+When using Docker Compose:
+
+```yaml
+environment:
+  NODE_ENV: production
+  PORT: {{service.port}}
+  HOST: 0.0.0.0
+  JWT_SECRET: ${JWT_SECRET}
+  DATABASE_URL: {{#if (eq infrastructure.database.type "postgresql")}}postgresql://postgres:${DB_PASSWORD}@postgres:5432/authdb{{else}}/data/{{service.name}}.db{{/if}}
+  REDIS_URL: redis://redis:6379
+  CORS_ORIGIN: https://example.com
+```
+
+## Security Best Practices
+
+1. **Never commit `.env` files** - Add to `.gitignore`
+2. **Use strong JWT secrets** - Minimum 32 characters, cryptographically random
+3. **Rotate secrets periodically** - Especially after security incidents
+4. **Use environment-specific values** - Different secrets for dev/staging/prod
+5. **Store secrets securely** - Use Vault, AWS Secrets Manager, or similar
+6. **Restrict CORS origins** - Never use `CORS_ORIGIN=true` in production
+7. **Use TLS for Redis** - Especially in production (`rediss://`)
+8. **Enable Redis authentication** - Set `requirepass` in Redis config
+9. **Use connection pooling** - Add `?pool_max=20` to DATABASE_URL
+10. **Monitor environment variables** - Alert on missing or invalid values
+
+## Validation
+
+The service validates environment variables on startup and will fail fast if required variables are missing or invalid.
+
+Check logs for validation errors:
+```bash
+npm start
+# Error: JWT_SECRET environment variable is required
+```
+{{/if}}

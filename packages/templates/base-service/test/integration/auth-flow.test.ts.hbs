@@ -1,0 +1,198 @@
+{{#if service.features.jwt}}
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { buildApp } from '../../src/app.js';
+import { FastifyInstance } from 'fastify';
+
+describe('Auth Flow Integration Tests', () => {
+  let app: FastifyInstance;
+  let accessToken: string;
+  let refreshToken: string;
+  const testUser = {
+    email: 'integration-test@example.com',
+    password: 'TestPassword123!',
+    name: 'Integration Test User',
+  };
+
+  beforeAll(async () => {
+    app = await buildApp({
+      logger: false,
+    });
+    await app.ready();
+
+    // Clean up any existing test user
+    await app.db('users').where({ email: testUser.email }).delete();
+  });
+
+  afterAll(async () => {
+    // Cleanup
+    await app.db('users').where({ email: testUser.email }).delete();
+    await app.close();
+  });
+
+  it('Complete auth flow: register → login → refresh → me → logout', async () => {
+    // Step 1: Register
+    const registerResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: testUser,
+    });
+
+    expect(registerResponse.statusCode).toBe(201);
+    const registerData = JSON.parse(registerResponse.body);
+    expect(registerData.accessToken).toBeDefined();
+    expect(registerData.refreshToken).toBeDefined();
+    expect(registerData.user.email).toBe(testUser.email);
+
+    accessToken = registerData.accessToken;
+    refreshToken = registerData.refreshToken;
+
+    // Step 2: Login
+    const loginResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: {
+        email: testUser.email,
+        password: testUser.password,
+      },
+    });
+
+    expect(loginResponse.statusCode).toBe(200);
+    const loginData = JSON.parse(loginResponse.body);
+    expect(loginData.accessToken).toBeDefined();
+    accessToken = loginData.accessToken;
+    refreshToken = loginData.refreshToken;
+
+    // Step 3: Get current user profile
+    const meResponse = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      headers: {
+        authorization: `Bearer ${accessToken}`,
+      },
+    });
+
+    expect(meResponse.statusCode).toBe(200);
+    const meData = JSON.parse(meResponse.body);
+    expect(meData.email).toBe(testUser.email);
+    expect(meData.name).toBe(testUser.name);
+
+    // Step 4: Refresh token
+    const refreshResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      payload: {
+        refreshToken,
+      },
+    });
+
+    expect(refreshResponse.statusCode).toBe(200);
+    const refreshData = JSON.parse(refreshResponse.body);
+    expect(refreshData.accessToken).toBeDefined();
+    expect(refreshData.refreshToken).toBeDefined();
+
+    const newAccessToken = refreshData.accessToken;
+
+    // Step 5: Verify old refresh token is revoked
+    const reuseRefreshResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/refresh',
+      payload: {
+        refreshToken, // Old token
+      },
+    });
+
+    expect(reuseRefreshResponse.statusCode).toBe(401);
+
+    // Step 6: Logout
+    const logoutResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      headers: {
+        authorization: `Bearer ${newAccessToken}`,
+      },
+    });
+
+    expect(logoutResponse.statusCode).toBe(200);
+
+    // Step 7: Verify token is blacklisted
+    const afterLogoutResponse = await app.inject({
+      method: 'GET',
+      url: '/auth/me',
+      headers: {
+        authorization: `Bearer ${newAccessToken}`,
+      },
+    });
+
+    expect(afterLogoutResponse.statusCode).toBe(401);
+  });
+
+  it('Account lockout after 5 failed login attempts', async () => {
+    const testEmail = 'lockout-test@example.com';
+
+    // Register user first
+    await app.inject({
+      method: 'POST',
+      url: '/auth/register',
+      payload: {
+        email: testEmail,
+        password: 'CorrectPassword123!',
+        name: 'Lockout Test',
+      },
+    });
+
+    // Attempt 5 failed logins
+    for (let i = 0; i < 5; i++) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/auth/login',
+        payload: {
+          email: testEmail,
+          password: 'WrongPassword',
+        },
+      });
+      expect(response.statusCode).toBe(401);
+    }
+
+    // 6th attempt should be locked
+    const lockedResponse = await app.inject({
+      method: 'POST',
+      url: '/auth/login',
+      payload: {
+        email: testEmail,
+        password: 'CorrectPassword123!',
+      },
+    });
+
+    expect(lockedResponse.statusCode).toBe(429);
+    const lockedData = JSON.parse(lockedResponse.body);
+    expect(lockedData.message).toContain('locked');
+
+    // Cleanup
+    await app.db('users').where({ email: testEmail }).delete();
+    await app.redis.del(`login:attempts:${testEmail}`);
+    await app.redis.del(`login:lockout:${testEmail}`);
+  });
+
+  it('Rate limiting on login endpoint', async () => {
+    const attempts = [];
+
+    // Make 6 rapid requests (limit is 5 per 15 min)
+    for (let i = 0; i < 6; i++) {
+      attempts.push(
+        app.inject({
+          method: 'POST',
+          url: '/auth/login',
+          payload: {
+            email: 'rate-test@example.com',
+            password: 'password',
+          },
+        })
+      );
+    }
+
+    const responses = await Promise.all(attempts);
+    const rateLimited = responses.some(r => r.statusCode === 429);
+    expect(rateLimited).toBe(true);
+  });
+});
+{{/if}}

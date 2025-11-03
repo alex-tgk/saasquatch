@@ -1,0 +1,73 @@
+import { FastifyInstance } from 'fastify';
+import { Redis } from 'ioredis';
+import { LoginAttempt } from '../models/index.js';
+
+export class LoginAttemptService {
+  private readonly ATTEMPT_PREFIX = 'login:attempts:';
+  private readonly LOCKOUT_PREFIX = 'login:lockout:';
+  private readonly MAX_ATTEMPTS = 5;
+  private readonly LOCKOUT_DURATION = 30 * 60; // 30 minutes in seconds
+  private readonly ATTEMPT_WINDOW = 15 * 60; // 15 minutes in seconds
+
+  constructor(
+    private readonly fastify: FastifyInstance,
+    private readonly redis: Redis
+  ) {}
+
+  async recordAttempt(email: string, success: boolean, ip?: string): Promise<void> {
+    const key = `${this.ATTEMPT_PREFIX}${email}`;
+    const attempt: LoginAttempt = {
+      email,
+      timestamp: new Date(),
+      success,
+      ip,
+    };
+
+    if (success) {
+      // Clear attempts on successful login
+      await this.redis.del(key);
+      await this.redis.del(`${this.LOCKOUT_PREFIX}${email}`);
+      this.fastify.log.info({ email }, 'Login attempts cleared after successful login');
+    } else {
+      // Increment failed attempts
+      await this.redis.rpush(key, JSON.stringify(attempt));
+      await this.redis.expire(key, this.ATTEMPT_WINDOW);
+
+      // Check if account should be locked
+      const attempts = await this.getRecentAttempts(email);
+      if (attempts.length >= this.MAX_ATTEMPTS) {
+        await this.lockAccount(email);
+      }
+    }
+  }
+
+  async isAccountLocked(email: string): Promise<boolean> {
+    const lockKey = `${this.LOCKOUT_PREFIX}${email}`;
+    const locked = await this.redis.exists(lockKey);
+    return locked === 1;
+  }
+
+  async lockAccount(email: string): Promise<void> {
+    const lockKey = `${this.LOCKOUT_PREFIX}${email}`;
+    await this.redis.setex(lockKey, this.LOCKOUT_DURATION, '1');
+
+    this.fastify.log.warn({ email }, 'Account locked due to excessive failed login attempts');
+  }
+
+  async getRecentAttempts(email: string): Promise<LoginAttempt[]> {
+    const key = `${this.ATTEMPT_PREFIX}${email}`;
+    const attempts = await this.redis.lrange(key, 0, -1);
+    return attempts.map(a => JSON.parse(a));
+  }
+
+  async getRemainingAttempts(email: string): Promise<number> {
+    const attempts = await this.getRecentAttempts(email);
+    return Math.max(0, this.MAX_ATTEMPTS - attempts.length);
+  }
+
+  async getLockoutTimeRemaining(email: string): Promise<number> {
+    const lockKey = `${this.LOCKOUT_PREFIX}${email}`;
+    const ttl = await this.redis.ttl(lockKey);
+    return Math.max(0, ttl);
+  }
+}

@@ -1,0 +1,38 @@
+{{#if service.features.jwt}}
+import { TokenService } from '../services/token.service.js';
+import { Counter } from 'prom-client';
+{{/if}}
+{{#if service.features.cache}}
+import { Redis } from 'ioredis';
+{{/if}}
+{{#if service.features.database}}
+import { Knex } from 'knex';
+{{/if}}
+{{#if service.features.messageQueue}}
+import { NatsConnection, StringCodec } from 'nats';
+{{/if}}
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    {{#if service.features.jwt}}
+    tokenService: TokenService;
+    authMetrics?: {
+      loginTotal: Counter<'status'>;
+      registrationTotal: Counter;
+      tokenRefreshTotal: Counter;
+      logoutTotal: Counter;
+      accountLockoutTotal: Counter;
+    };
+    {{/if}}
+    {{#if service.features.cache}}
+    redis: Redis;
+    {{/if}}
+    {{#if service.features.database}}
+    db: Knex;
+    {{/if}}
+    {{#if service.features.messageQueue}}
+    nats: NatsConnection;
+    natsCodec: StringCodec;
+    {{/if}}
+  }
+}

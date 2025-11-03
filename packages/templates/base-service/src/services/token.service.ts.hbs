@@ -1,0 +1,268 @@
+import { FastifyInstance } from 'fastify';
+import { Redis } from 'ioredis';
+
+export interface TokenPayload {
+  userId: string;
+  email: string;
+  tenantId?: string;
+}
+
+export interface AccessTokenPayload extends TokenPayload {
+  type: 'access';
+}
+
+export interface RefreshTokenPayload {
+  userId: string;
+  type: 'refresh';
+}
+
+export class TokenService {
+  private readonly ACCESS_TOKEN_EXPIRY = '15m';
+  private readonly REFRESH_TOKEN_EXPIRY = '7d';
+  private readonly BLACKLIST_PREFIX = 'token:blacklist:';
+
+  constructor(
+    private readonly fastify: FastifyInstance,
+    private readonly redis: Redis
+  ) {}
+
+  /**
+   * Generate an access token with 15-minute expiry
+   * @param userId - User's unique identifier
+   * @param email - User's email address
+   * @param tenantId - Optional tenant identifier for multi-tenancy
+   * @returns JWT access token string
+   */
+  async generateAccessToken(
+    userId: string,
+    email: string,
+    tenantId?: string
+  ): Promise<string> {
+    try {
+      const payload: AccessTokenPayload = {
+        userId,
+        email,
+        type: 'access',
+        ...(tenantId && { tenantId }),
+      };
+
+      const token = this.fastify.jwt.sign(payload, {
+        expiresIn: this.ACCESS_TOKEN_EXPIRY,
+      });
+
+      this.fastify.log.info(
+        { userId, email, tenantId },
+        'Access token generated'
+      );
+
+      return token;
+    } catch (error) {
+      this.fastify.log.error(
+        { userId, email, error },
+        'Failed to generate access token'
+      );
+      throw new Error('Failed to generate access token');
+    }
+  }
+
+  /**
+   * Generate a refresh token with 7-day expiry
+   * @param userId - User's unique identifier
+   * @returns JWT refresh token string
+   */
+  async generateRefreshToken(userId: string): Promise<string> {
+    try {
+      const payload: RefreshTokenPayload = {
+        userId,
+        type: 'refresh',
+      };
+
+      const token = this.fastify.jwt.sign(payload, {
+        expiresIn: this.REFRESH_TOKEN_EXPIRY,
+      });
+
+      this.fastify.log.info({ userId }, 'Refresh token generated');
+
+      return token;
+    } catch (error) {
+      this.fastify.log.error(
+        { userId, error },
+        'Failed to generate refresh token'
+      );
+      throw new Error('Failed to generate refresh token');
+    }
+  }
+
+  /**
+   * Verify and decode a JWT token
+   * @param token - JWT token to verify
+   * @returns Decoded token payload
+   * @throws Error if token is invalid, expired, or blacklisted
+   */
+  async verifyToken(token: string): Promise<TokenPayload | RefreshTokenPayload> {
+    try {
+      // Check if token is blacklisted
+      const isBlacklisted = await this.isTokenRevoked(token);
+      if (isBlacklisted) {
+        this.fastify.log.warn({ token: token.substring(0, 20) }, 'Token is blacklisted');
+        throw new Error('Token has been revoked');
+      }
+
+      // Verify token signature and expiry
+      const decoded = this.fastify.jwt.verify(token) as TokenPayload | RefreshTokenPayload;
+
+      this.fastify.log.debug(
+        { userId: decoded.userId, type: (decoded as any).type },
+        'Token verified successfully'
+      );
+
+      return decoded;
+    } catch (error) {
+      if (error instanceof Error) {
+        // Handle specific JWT errors
+        if (error.message === 'Token has been revoked') {
+          throw error;
+        }
+        if (error.message.includes('expired')) {
+          this.fastify.log.warn('Token has expired');
+          throw new Error('Token has expired');
+        }
+        if (error.message.includes('invalid')) {
+          this.fastify.log.warn('Invalid token signature');
+          throw new Error('Invalid token');
+        }
+      }
+
+      this.fastify.log.error({ error }, 'Token verification failed');
+      throw new Error('Token verification failed');
+    }
+  }
+
+  /**
+   * Revoke a token by adding it to Redis blacklist
+   * @param token - JWT token to revoke
+   * @returns Promise that resolves when token is blacklisted
+   */
+  async revokeToken(token: string): Promise<void> {
+    try {
+      // Decode token to get expiry (without verification)
+      const decoded = this.fastify.jwt.decode(token) as any;
+
+      if (!decoded || !decoded.exp) {
+        throw new Error('Invalid token format');
+      }
+
+      // Calculate TTL (time until token expires)
+      const now = Math.floor(Date.now() / 1000);
+      const ttl = decoded.exp - now;
+
+      // Only blacklist if token hasn't expired yet
+      if (ttl > 0) {
+        const key = `${this.BLACKLIST_PREFIX}${token}`;
+
+        // Store in Redis with expiry matching token expiry
+        await this.redis.setex(key, ttl, '1');
+
+        this.fastify.log.info(
+          {
+            userId: decoded.userId,
+            type: decoded.type,
+            ttl
+          },
+          'Token revoked and blacklisted'
+        );
+      } else {
+        this.fastify.log.debug('Token already expired, skipping blacklist');
+      }
+    } catch (error) {
+      this.fastify.log.error({ error }, 'Failed to revoke token');
+      throw new Error('Failed to revoke token');
+    }
+  }
+
+  /**
+   * Check if a token has been revoked (is in blacklist)
+   * @param token - JWT token to check
+   * @returns True if token is blacklisted, false otherwise
+   */
+  async isTokenRevoked(token: string): Promise<boolean> {
+    try {
+      const key = `${this.BLACKLIST_PREFIX}${token}`;
+      const exists = await this.redis.exists(key);
+
+      return exists === 1;
+    } catch (error) {
+      this.fastify.log.error(
+        { error },
+        'Failed to check token blacklist status'
+      );
+      // Fail open: if we can't check Redis, assume token is valid
+      // This prevents Redis outages from blocking all authentication
+      return false;
+    }
+  }
+
+  /**
+   * Generate both access and refresh tokens for a user
+   * @param userId - User's unique identifier
+   * @param email - User's email address
+   * @param tenantId - Optional tenant identifier
+   * @returns Object containing both access and refresh tokens
+   */
+  async generateTokenPair(
+    userId: string,
+    email: string,
+    tenantId?: string
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const [accessToken, refreshToken] = await Promise.all([
+      this.generateAccessToken(userId, email, tenantId),
+      this.generateRefreshToken(userId),
+    ]);
+
+    return {
+      accessToken,
+      refreshToken,
+    };
+  }
+
+  /**
+   * Refresh access token using a valid refresh token
+   * @param refreshToken - Valid refresh token
+   * @param email - User's email address (for new access token)
+   * @param tenantId - Optional tenant identifier
+   * @returns New access token
+   * @throws Error if refresh token is invalid or revoked
+   */
+  async refreshAccessToken(
+    refreshToken: string,
+    email: string,
+    tenantId?: string
+  ): Promise<string> {
+    try {
+      // Verify refresh token
+      const decoded = await this.verifyToken(refreshToken) as RefreshTokenPayload;
+
+      // Ensure it's a refresh token
+      if (decoded.type !== 'refresh') {
+        throw new Error('Invalid token type');
+      }
+
+      // Generate new access token
+      const accessToken = await this.generateAccessToken(
+        decoded.userId,
+        email,
+        tenantId
+      );
+
+      this.fastify.log.info(
+        { userId: decoded.userId },
+        'Access token refreshed'
+      );
+
+      return accessToken;
+    } catch (error) {
+      this.fastify.log.error({ error }, 'Failed to refresh access token');
+      throw error;
+    }
+  }
+}

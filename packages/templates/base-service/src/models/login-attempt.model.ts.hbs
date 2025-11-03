@@ -1,0 +1,39 @@
+/**
+ * Login attempt record for security auditing
+ */
+export interface LoginAttempt {
+  /** User's email address */
+  email: string;
+
+  /** Attempt timestamp */
+  timestamp: Date;
+
+  /** Whether the login was successful */
+  success: boolean;
+
+  /** IP address of the attempt */
+  ip?: string;
+
+  /** User agent string */
+  user_agent?: string;
+
+  /** Failure reason (if unsuccessful) */
+  failure_reason?: string;
+}
+
+/**
+ * Account lockout status
+ */
+export interface AccountLockout {
+  /** User's email address */
+  email: string;
+
+  /** When the account was locked */
+  locked_at: Date;
+
+  /** When the lockout expires */
+  expires_at: Date;
+
+  /** Number of failed attempts that triggered lockout */
+  failed_attempts: number;
+}

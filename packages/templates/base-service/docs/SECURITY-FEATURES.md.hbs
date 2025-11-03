@@ -1,0 +1,218 @@
+# Security Features
+
+This service includes production-ready security features to protect against common attacks.
+
+{{#if service.features.cache}}
+## Account Lockout Protection
+
+The `LoginAttemptService` provides Redis-based brute force protection:
+
+### Configuration
+- **Maximum attempts**: 5 failed login attempts
+- **Lockout duration**: 30 minutes
+- **Attempt window**: 15 minutes (attempts expire after this time)
+
+### Features
+- Tracks failed login attempts per email address
+- Locks account after 5 failed attempts
+- Shows remaining attempts in error messages
+- Automatically clears attempts on successful login
+- Records IP address for audit purposes
+
+### Usage
+
+The service is automatically integrated into the `/auth/login` route:
+
+```typescript
+// Check if account is locked
+const isLocked = await loginAttemptService.isAccountLocked(email);
+
+// Record failed attempt
+await loginAttemptService.recordAttempt(email, false, ip);
+
+// Get remaining attempts
+const remaining = await loginAttemptService.getRemainingAttempts(email);
+
+// Record successful login (clears attempts)
+await loginAttemptService.recordAttempt(email, true, ip);
+```
+
+### Error Responses
+
+**Account Locked (429 Too Many Requests)**:
+```json
+{
+  "statusCode": 429,
+  "error": "Too Many Requests",
+  "message": "Account temporarily locked due to too many failed login attempts. Please try again in 25 minutes."
+}
+```
+
+**Failed Attempt (401 Unauthorized)**:
+```json
+{
+  "statusCode": 401,
+  "error": "Unauthorized",
+  "message": "Invalid email or password. 3 attempts remaining before account lockout."
+}
+```
+
+## Rate Limiting
+
+The `rateLimitPlugin` provides distributed rate limiting using Redis:
+
+### Global Rate Limits
+- **Default**: 100 requests per 15 minutes per IP address
+- **Whitelist**: Localhost (127.0.0.1) is exempt for development
+- **Fail open**: If Redis is down, rate limiting is skipped
+
+### Route-Specific Rate Limits
+
+**Registration (`POST /auth/register`)**:
+- **Limit**: 3 registrations per hour per IP address
+- **Purpose**: Prevent spam account creation
+
+**Login (`POST /auth/login`)**:
+- **Limit**: 5 login attempts per 15 minutes per IP address
+- **Purpose**: Additional protection against brute force attacks
+
+### Configuration
+
+Override rate limits per route:
+
+```typescript
+fastify.post('/auth/login', {
+  config: {
+    rateLimit: {
+      max: 5,
+      timeWindow: '15 minutes',
+    },
+  },
+  // ... route handler
+});
+```
+
+### Rate Limit Headers
+
+When rate limited, the service returns standard headers:
+
+```
+HTTP/1.1 429 Too Many Requests
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 0
+X-RateLimit-Reset: 1699564800
+Retry-After: 900
+```
+
+## Security Best Practices
+
+### Password Security
+- Passwords are hashed using bcrypt with 10 salt rounds
+- Password hashes are never returned in API responses
+- Minimum password length: 8 characters (enforced by schema)
+
+### JWT Token Security
+- Access tokens expire after 15 minutes
+- Refresh tokens expire after 7 days
+- Token rotation on refresh (old refresh tokens are blacklisted)
+- Tokens are blacklisted on logout
+
+### Database Security
+- User passwords are stored as `password_hash` (never plaintext)
+- SQL injection protection via Knex query builder
+- Prepared statements for all queries
+
+### Logging
+All security events are logged:
+- Successful logins
+- Failed login attempts
+- Account lockouts
+- Token refreshes
+- Logouts
+
+Example log entry:
+```json
+{
+  "level": "warn",
+  "email": "user@example.com",
+  "msg": "Account locked due to excessive failed login attempts"
+}
+```
+
+## Testing
+
+Comprehensive tests are provided in `test/unit/services/login-attempt.service.test.ts`:
+
+- Account lockout after 5 attempts
+- Successful login clears attempts
+- Lockout expires after 30 minutes
+- Remaining attempts calculation
+- Multiple users handled independently
+- TTL verification for Redis keys
+
+Run tests:
+```bash
+npm test
+```
+
+## Monitoring
+
+Monitor security metrics:
+
+```bash
+# Check Redis for locked accounts
+redis-cli KEYS "login:lockout:*"
+
+# Check login attempts for user
+redis-cli LRANGE "login:attempts:user@example.com" 0 -1
+
+# Check rate limit data
+redis-cli KEYS "rate-limit:*"
+```
+
+## Production Recommendations
+
+1. **Monitor failed logins**: Set up alerts for excessive failed login attempts
+2. **Review lockouts**: Periodically review locked accounts for patterns
+3. **Adjust thresholds**: Fine-tune max attempts and lockout duration based on your needs
+4. **IP whitelisting**: Consider whitelisting trusted IPs (VPN, office networks)
+5. **CAPTCHA**: Add CAPTCHA after 3 failed attempts for additional protection
+6. **Multi-factor authentication**: Consider implementing MFA for sensitive accounts
+
+## Environment Variables
+
+```bash
+# Redis configuration (required for security features)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_PASSWORD=your-redis-password
+
+# JWT configuration
+JWT_SECRET=your-secret-key
+
+# CORS configuration
+CORS_ORIGIN=https://yourdomain.com
+```
+
+## Disabling Security Features
+
+If you need to disable rate limiting for testing:
+
+```typescript
+// In app.ts, comment out rate limit plugin
+// await app.register(rateLimitPlugin);
+```
+
+**Note**: Never disable security features in production!
+{{/if}}
+{{^if service.features.cache}}
+## Security Features Disabled
+
+This service was generated without Redis cache support. Security features like account lockout and rate limiting require Redis.
+
+To enable these features, regenerate your service with `cache: true` in the configuration:
+
+```bash
+npx @saasquatch/cli init my-project --cache
+```
+{{/if}}

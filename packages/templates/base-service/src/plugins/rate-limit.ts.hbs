@@ -1,0 +1,25 @@
+import fp from 'fastify-plugin';
+import rateLimit from '@fastify/rate-limit';
+
+async function rateLimitPlugin(fastify: any) {
+  // Global rate limit (can be overridden per route)
+  await fastify.register(rateLimit, {
+    max: 100, // Maximum 100 requests
+    timeWindow: '15 minutes', // Per 15-minute window
+    {{#if service.features.cache}}redis: fastify.redis, // Use Redis for distributed rate limiting
+    {{/if}}cache: 10000, // Keep rate limit data for 10000 requests in memory
+    allowList: ['127.0.0.1'], // Whitelist localhost for development
+    continueExceeding: true, // Continue to count requests after limit is exceeded
+    skipOnError: true, // Skip rate limiting if Redis is down (fail open)
+  });
+
+  fastify.log.info('Rate limiting plugin registered successfully');
+}
+
+export default fp(rateLimitPlugin, {
+  name: 'rate-limit',
+  {{#if service.features.cache}}dependencies: ['redis'],
+  {{/if}}
+});
+
+export { rateLimitPlugin };

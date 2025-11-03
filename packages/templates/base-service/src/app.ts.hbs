@@ -4,6 +4,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{#if service.features.cors}}import cors from '@fastify/cors';
+{{/if}}{{#if service.features.jwt}}import helmet from './plugins/helmet.js';
 {{/if}}{{#if service.features.rateLimit}}import rateLimit from '@fastify/rate-limit';
 {{/if}}{{#if service.features.compression}}import compress from '@fastify/compress';
 {{/if}}import metricsPlugin from './plugins/metrics.js';
@@ -13,6 +14,7 @@ import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
 {{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
 {{/if}}{{#if service.features.jwt}}import { authPlugin } from './plugins/auth.js';
+import { rateLimitPlugin } from './plugins/rate-limit.js';
 {{/if}}
 
 export async function buildApp(opts = {}) {
@@ -42,6 +44,9 @@ export async function buildApp(opts = {}) {
     credentials: true,
   });
 
+  {{/if}}{{#if service.features.jwt}}// Register Helmet security headers
+  await app.register(helmet);
+
   {{/if}}{{#if service.features.rateLimit}}await app.register(rateLimit, {
     max: 100,
     timeWindow: '1 minute',
@@ -53,9 +58,10 @@ export async function buildApp(opts = {}) {
   await app.register(metricsPlugin);
 
   {{#if service.features.database}}await app.register(databasePlugin);
-  {{/if}}{{#if service.features.cache}}await app.register(redisPlugin);
+  {{/if}}{{#if (or service.features.cache service.features.jwt)}}await app.register(redisPlugin);
   {{/if}}{{#if service.features.messageQueue}}await app.register(natsPlugin);
-  {{/if}}{{#if service.features.jwt}}await app.register(authPlugin);
+  {{/if}}{{#if service.features.jwt}}await app.register(rateLimitPlugin);
+  await app.register(authPlugin);
 
   {{/if}}// Register routes
   {{#if service.features.healthChecks}}await app.register(healthRoutes);

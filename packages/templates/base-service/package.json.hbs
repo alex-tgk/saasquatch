@@ -39,7 +39,7 @@
     "knex": "^3.1.0",
     "dotenv": "^16.3.1"{{#if (eq infrastructure.database.type "postgresql")}},
     "pg": "^8.11.3"{{/if}}{{#if (eq infrastructure.database.type "sqlite")}},
-    "better-sqlite3": "^9.2.2"{{/if}}{{/if}}{{#if service.features.cache}},
+    "better-sqlite3": "^9.2.2"{{/if}}{{/if}}{{#if (or service.features.cache service.features.jwt)}},
     "ioredis": "^5.3.2"{{/if}}{{#if service.features.messageQueue}},
     "nats": "^2.19.0"{{/if}}{{#if service.features.jwt}},
     "@fastify/jwt": "^8.0.0",

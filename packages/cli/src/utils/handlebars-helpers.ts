@@ -49,6 +49,11 @@ export function registerHelpers(): void {
     return JSON.stringify(context, null, 2);
   });
 
+  // Helper: Add numbers
+  Handlebars.registerHelper('add', (a: number, b: number) => {
+    return a + b;
+  });
+
   // Helper: Conditional array iteration
   Handlebars.registerHelper('eachIf', function(array: any[], condition: (item: any) => boolean, options: any) {
     let result = '';

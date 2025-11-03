@@ -334,10 +334,13 @@ MIT
       'src/routes',
       'src/services',
       'src/schemas',
+      'src/models',
       'src/utils',
       'src/config',
+      'src/types',
       'test',
       'test/unit',
+      'test/unit/services',
       'test/integration',
       'test/routes',
       'test/helpers',
@@ -364,6 +367,13 @@ MIT
     await this.renderer.renderToFile(
       'base-service/src/config/swagger.config.ts.hbs',
       path.join(serviceDir, 'src/config/swagger.config.ts'),
+      context
+    );
+
+    // Generate Fastify type definitions
+    await this.renderer.renderToFile(
+      'base-service/src/types/fastify.d.ts.hbs',
+      path.join(serviceDir, 'src/types/fastify.d.ts'),
       context
     );
 
@@ -396,7 +406,8 @@ MIT
         context
       );
     }
-    if (service.features.cache) {
+    // Redis plugin needed for cache OR jwt (TokenService requires Redis)
+    if (service.features.cache || service.features.jwt) {
       await this.renderer.renderToFile(
         'base-service/src/plugins/redis.ts.hbs',
         path.join(serviceDir, 'src/plugins/redis.ts'),
@@ -416,6 +427,34 @@ MIT
         path.join(serviceDir, 'src/plugins/auth.ts'),
         context
       );
+
+      // Generate Helmet security headers plugin
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/helmet.ts.hbs',
+        path.join(serviceDir, 'src/plugins/helmet.ts'),
+        context
+      );
+
+      // Generate TokenService (for JWT token management)
+      await this.renderer.renderToFile(
+        'base-service/src/services/token.service.ts.hbs',
+        path.join(serviceDir, 'src/services/token.service.ts'),
+        context
+      );
+
+      // Generate AuditLogService (for security event logging)
+      await this.renderer.renderToFile(
+        'base-service/src/services/audit-log.service.ts.hbs',
+        path.join(serviceDir, 'src/services/audit-log.service.ts'),
+        context
+      );
+
+      // Generate password validator utility
+      await this.renderer.renderToFile(
+        'base-service/src/utils/password-validator.ts.hbs',
+        path.join(serviceDir, 'src/utils/password-validator.ts'),
+        context
+      );
     }
 
     // Generate metrics plugin (always included for all services)
@@ -430,6 +469,25 @@ MIT
       await this.renderer.renderToFile(
         'base-service/src/routes/health.ts.hbs',
         path.join(serviceDir, 'src/routes/health.ts'),
+        context
+      );
+    }
+
+    // Generate models (only for JWT authentication services)
+    if (service.features.jwt) {
+      await this.renderer.renderToFile(
+        'base-service/src/models/user.model.ts.hbs',
+        path.join(serviceDir, 'src/models/user.model.ts'),
+        context
+      );
+      await this.renderer.renderToFile(
+        'base-service/src/models/login-attempt.model.ts.hbs',
+        path.join(serviceDir, 'src/models/login-attempt.model.ts'),
+        context
+      );
+      await this.renderer.renderToFile(
+        'base-service/src/models/index.ts.hbs',
+        path.join(serviceDir, 'src/models/index.ts'),
         context
       );
     }
@@ -519,6 +577,60 @@ MIT
       await this.renderer.renderToFile(
         'base-service/test/routes/auth.test.ts.hbs',
         path.join(serviceDir, 'test/routes/auth.test.ts'),
+        context
+      );
+
+      // Generate TokenService unit tests
+      await this.renderer.renderToFile(
+        'base-service/test/unit/services/token.service.test.ts.hbs',
+        path.join(serviceDir, 'test/unit/services/token.service.test.ts'),
+        context
+      );
+
+      // Generate LoginAttemptService unit tests
+      await this.renderer.renderToFile(
+        'base-service/test/unit/services/login-attempt.service.test.ts.hbs',
+        path.join(serviceDir, 'test/unit/services/login-attempt.service.test.ts'),
+        context
+      );
+
+      // Generate password validator unit tests
+      await this.renderer.renderToFile(
+        'base-service/test/unit/utils/password-validator.test.ts.hbs',
+        path.join(serviceDir, 'test/unit/utils/password-validator.test.ts'),
+        context
+      );
+
+      // Generate integration tests
+      await this.renderer.renderToFile(
+        'base-service/test/integration/auth-flow.test.ts.hbs',
+        path.join(serviceDir, 'test/integration/auth-flow.test.ts'),
+        context
+      );
+
+      // Generate authentication documentation
+      await this.renderer.renderToFile(
+        'base-service/docs/AUTH-README.md.hbs',
+        path.join(serviceDir, 'docs/AUTH-README.md'),
+        context
+      );
+
+      await this.renderer.renderToFile(
+        'base-service/docs/ENVIRONMENT.md.hbs',
+        path.join(serviceDir, 'docs/ENVIRONMENT.md'),
+        context
+      );
+
+      // Generate Mermaid diagrams
+      await this.renderer.renderToFile(
+        'base-service/docs/diagrams/auth-flow.mermaid.hbs',
+        path.join(serviceDir, 'docs/diagrams/auth-flow.mermaid'),
+        context
+      );
+
+      await this.renderer.renderToFile(
+        'base-service/docs/diagrams/security-architecture.mermaid.hbs',
+        path.join(serviceDir, 'docs/diagrams/security-architecture.mermaid'),
         context
       );
     }
