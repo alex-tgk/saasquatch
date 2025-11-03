@@ -1,0 +1,1145 @@
+# {{project.name}} Infrastructure Documentation
+
+Complete reference for the infrastructure setup, architecture, and operational procedures.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Architecture](#architecture)
+3. [Services](#services)
+4. [Infrastructure Components](#infrastructure-components)
+5. [Quick Start](#quick-start)
+6. [Development Workflow](#development-workflow)
+7. [Production Deployment](#production-deployment)
+8. [Monitoring](#monitoring)
+9. [Troubleshooting](#troubleshooting)
+10. [Maintenance](#maintenance)
+
+---
+
+## Overview
+
+{{project.name}} is a microservices-based application built with Fastify, featuring:
+
+{{#if infrastructure.database}}
+- **Database**: {{infrastructure.database.type}} with {{#if infrastructure.database.multiTenancy.enabled}}multi-tenancy ({{infrastructure.database.multiTenancy.model}}){{else}}single-tenant architecture{{/if}}
+{{/if}}
+{{#if infrastructure.cache}}
+- **Cache**: Redis for session management and application caching
+{{/if}}
+{{#if infrastructure.messageQueue}}
+- **Message Queue**: NATS with JetStream for inter-service communication
+{{/if}}
+- **Containerization**: Docker with Docker Compose for orchestration
+- **Health Checks**: Automated health monitoring for all services
+- **Logging**: Structured JSON logging with Pino
+- **Hot Reload**: Development mode with automatic code reloading
+
+---
+
+## Architecture
+
+### System Architecture Diagram
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                     Docker Network                               │
+│                 ({{project.name}}-network)                       │
+│                                                                  │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                      Services                            │   │
+│  │                                                          │   │
+{{#each services}}
+│  │  ┌──────────────────────────────────────┐              │   │
+│  │  │  {{this.name}}                       │              │   │
+│  │  │  Port: {{this.port}}                 │              │   │
+│  │  │  Features:                           │              │   │
+{{#if this.features.database}}
+│  │  │    - Database                        │              │   │
+{{/if}}
+{{#if this.features.cache}}
+│  │  │    - Redis Cache                     │              │   │
+{{/if}}
+{{#if this.features.messageQueue}}
+│  │  │    - NATS Messaging                  │              │   │
+{{/if}}
+{{#if this.features.jwt}}
+│  │  │    - JWT Auth                        │              │   │
+{{/if}}
+│  │  └──────────────────────────────────────┘              │   │
+│  │                      │                                  │   │
+{{/each}}
+│  └──────────────────────┼──────────────────────────────────┘   │
+│                         │                                       │
+│         ┌───────────────┴────────────────┐                     │
+│         │                                 │                     │
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+│  ┌──────▼─────────┐    ┌─────────────┐   ┌──────────────┐    │
+│  │   PostgreSQL   │    │    Redis    │   │     NATS     │    │
+│  │   Port: 5432   │    │  Port: 6379 │   │  Port: 4222  │    │
+│  │                │    │             │   │  HTTP: 8222  │    │
+│  └────────────────┘    └─────────────┘   └──────────────┘    │
+{{/eq}}
+{{/if}}
+│                                                                  │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │                    Persistent Volumes                     │  │
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+│  │  - {{project.name}}-postgres-data                        │  │
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+│  │  - {{project.name}}-redis-data                           │  │
+{{/if}}
+{{#if infrastructure.messageQueue}}
+│  │  - {{project.name}}-nats-data                            │  │
+{{/if}}
+│  └──────────────────────────────────────────────────────────┘  │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+### Network Architecture
+
+All services communicate through the `{{project.name}}-network` bridge network:
+
+- **Internal DNS**: Services reference each other by container name
+- **Port Mapping**: Exposes services to host for development
+- **Isolation**: Services are isolated from other Docker networks
+- **Service Discovery**: Automatic DNS resolution for service names
+
+### Data Flow
+
+```
+┌─────────┐
+│  Client │
+└────┬────┘
+     │
+     ▼
+{{#each services}}
+{{#if @first}}
+┌─────────────────┐
+│  {{this.name}} │  (Port: {{this.port}})
+└────────┬────────┘
+         │
+         ├──────► Database ({{#if ../infrastructure.database}}{{../infrastructure.database.type}}{{/if}})
+         │
+         ├──────► Cache (Redis)
+         │
+         └──────► Message Queue (NATS) ──► Other Services
+{{/if}}
+{{/each}}
+```
+
+---
+
+## Services
+
+{{#each services}}
+### {{this.name}}
+
+**Port**: {{this.port}}
+**Health Check**: `http://localhost:{{this.port}}/health`
+{{#if this.features.swagger}}
+**API Documentation**: `http://localhost:{{this.port}}/docs`
+{{/if}}
+
+**Description**: {{this.description}}
+
+**Capabilities**:
+{{#if this.features.database}}
+- ✅ Database persistence ({{../infrastructure.database.type}})
+{{/if}}
+{{#if this.features.cache}}
+- ✅ Redis caching for performance
+{{/if}}
+{{#if this.features.messageQueue}}
+- ✅ Event publishing via NATS
+{{/if}}
+{{#if this.features.jwt}}
+- ✅ JWT-based authentication
+{{/if}}
+
+**Environment Variables**:
+```bash
+NODE_ENV=development
+PORT={{this.port}}
+SERVICE_NAME={{this.name}}
+LOG_LEVEL=info
+{{#if this.features.database}}
+DATABASE_URL={{#eq ../infrastructure.database.type "postgresql"}}postgres://postgres:postgres@postgres:5432/{{../project.name}}{{/eq}}{{#eq ../infrastructure.database.type "sqlite"}}file:./data/{{this.name}}.db{{/eq}}
+{{/if}}
+{{#if this.features.cache}}
+REDIS_URL=redis://redis:6379
+{{/if}}
+{{#if this.features.messageQueue}}
+NATS_URL=nats://nats:4222
+{{/if}}
+{{#if this.features.jwt}}
+JWT_SECRET=your-secret-key
+JWT_EXPIRES_IN=1h
+{{/if}}
+```
+
+**Dependencies**:
+{{#if this.features.database}}
+- postgres (PostgreSQL database)
+{{/if}}
+{{#if this.features.cache}}
+- redis (Redis cache)
+{{/if}}
+{{#if this.features.messageQueue}}
+- nats (NATS message queue)
+{{/if}}
+
+---
+
+{{/each}}
+
+## Infrastructure Components
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+### PostgreSQL Database
+
+**Version**: PostgreSQL {{#if infrastructure.database.version}}{{infrastructure.database.version}}{{else}}16{{/if}}
+**Port**: 5432
+**Database**: {{project.name}}
+
+**Features**:
+- Full ACID compliance
+- JSON/JSONB support for flexible schemas
+- UUID and cryptographic extensions enabled
+{{#if infrastructure.database.multiTenancy.enabled}}
+- Multi-tenancy with {{infrastructure.database.multiTenancy.model}}
+{{/if}}
+- Automated health checks every 10 seconds
+- Persistent storage in Docker volumes
+
+**Connection String**:
+```
+postgresql://postgres:postgres@localhost:5432/{{project.name}}
+```
+
+**Extensions Enabled**:
+- `uuid-ossp` - UUID generation
+- `pgcrypto` - Cryptographic functions
+
+{{#if infrastructure.database.multiTenancy.enabled}}
+**Multi-Tenancy**:
+
+This project uses **{{infrastructure.database.multiTenancy.model}}** for data isolation:
+
+```sql
+-- Create new tenant schema
+SELECT create_tenant_schema('tenant_123');
+
+-- Switch to tenant context
+SET search_path TO tenant_tenant_123;
+
+-- All queries now execute in tenant context
+SELECT * FROM users;
+```
+
+**Benefits**:
+- Complete data isolation between tenants
+- Simplified access control via schemas
+- Efficient resource sharing
+- Easy per-tenant backups and migrations
+{{/if}}
+
+**Backup and Restore**:
+
+Create backup:
+```bash
+docker-compose exec postgres pg_dump -U postgres {{project.name}} > backup.sql
+```
+
+Restore backup:
+```bash
+docker-compose exec -T postgres psql -U postgres {{project.name}} < backup.sql
+```
+
+**Performance Tuning**:
+- Connection pooling via application layer
+- Indexed foreign keys for optimal joins
+- Regular VACUUM and ANALYZE operations
+- Prepared statements for frequent queries
+
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.cache}}
+### Redis Cache
+
+**Version**: Redis {{#if infrastructure.cache.version}}{{infrastructure.cache.version}}{{else}}7{{/if}}
+**Port**: 6379
+
+**Features**:
+- In-memory data store for sub-millisecond latency
+- AOF (Append-Only File) persistence enabled
+- RDB snapshots for point-in-time recovery
+- LRU eviction policy (256MB max memory)
+- Automated health checks every 10 seconds
+
+**Connection String**:
+```
+redis://localhost:6379
+```
+
+**Use Cases**:
+- Session storage and management
+- API response caching
+- Rate limiting counters
+- Temporary data (OTP codes, tokens)
+- Pub/Sub messaging between services
+
+**Configuration Highlights**:
+```
+maxmemory: 256mb
+maxmemory-policy: allkeys-lru
+appendonly: yes
+appendfsync: everysec
+save: 900 1, 300 10, 60 10000
+```
+
+**Persistence Strategy**:
+- **AOF**: fsync every second for durability
+- **RDB**: Snapshots at 15min/5min/1min intervals
+- **Hybrid**: RDB-AOF format for fast restarts
+
+**Common Operations**:
+
+Connect to Redis CLI:
+```bash
+docker-compose exec redis redis-cli
+```
+
+Check memory usage:
+```bash
+docker-compose exec redis redis-cli INFO memory
+```
+
+Monitor commands in real-time:
+```bash
+docker-compose exec redis redis-cli MONITOR
+```
+
+Flush all data (use with caution):
+```bash
+docker-compose exec redis redis-cli FLUSHALL
+```
+
+{{/if}}
+
+{{#if infrastructure.messageQueue}}
+### NATS Message Queue
+
+**Version**: NATS {{#if infrastructure.messageQueue.version}}{{infrastructure.messageQueue.version}}{{else}}2.10{{/if}}
+**Client Port**: 4222
+**Monitoring Port**: 8222
+
+**Features**:
+- JetStream enabled for message persistence
+- At-least-once delivery guarantee
+- Queue groups for load balancing
+- Message replay and time-based retention
+- Built-in monitoring dashboard
+
+**Connection String**:
+```
+nats://localhost:4222
+```
+
+**Monitoring**:
+```
+http://localhost:8222
+```
+
+**Use Cases**:
+- Inter-service communication
+- Event-driven architecture
+- Request-reply patterns
+- Pub/Sub messaging
+- Work queue distribution
+
+**JetStream Streams**:
+
+JetStream provides persistent messaging with:
+- Message deduplication
+- Acknowledgments and redelivery
+- Multiple consumer modes
+- Stream replication (cluster mode)
+
+**Common Operations**:
+
+View server status:
+```bash
+curl http://localhost:8222/varz | jq
+```
+
+View JetStream info:
+```bash
+curl http://localhost:8222/jsz | jq
+```
+
+View connections:
+```bash
+curl http://localhost:8222/connz | jq
+```
+
+**Using NATS CLI** (if installed):
+
+Subscribe to events:
+```bash
+nats sub "events.>"
+```
+
+Publish event:
+```bash
+nats pub "events.user.created" '{"userId":"123"}'
+```
+
+List streams:
+```bash
+nats stream ls
+```
+
+{{/if}}
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+- **Docker**: Version 20.10 or higher
+- **Docker Compose**: V2 or higher
+- **Available RAM**: At least 2GB
+- **Available Ports**:
+  - Services: {{#each services}}{{this.port}}{{#unless @last}}, {{/unless}}{{/each}}
+{{#if infrastructure.database}}
+  - PostgreSQL: 5432
+{{/if}}
+{{#if infrastructure.cache}}
+  - Redis: 6379
+{{/if}}
+{{#if infrastructure.messageQueue}}
+  - NATS: 4222, 8222
+{{/if}}
+
+### Initial Setup
+
+**Step 1**: Copy environment file
+```bash
+cp .env.example .env
+```
+
+**Step 2**: Update environment variables
+```bash
+# Edit .env with your configuration
+nano .env
+
+# Required changes for production:
+# - JWT_SECRET: Use a strong random string (min 32 characters)
+# - POSTGRES_PASSWORD: Set a secure database password
+# - REDIS_PASSWORD: Set a secure Redis password (optional)
+```
+
+**Step 3**: Start all services
+```bash
+# Start infrastructure and services
+docker-compose up -d
+
+# View logs
+docker-compose logs -f
+
+# Check service health
+docker-compose ps
+```
+
+**Step 4**: Verify services
+```bash
+# Check health endpoints
+{{#each services}}
+curl http://localhost:{{this.port}}/health
+{{/each}}
+
+# Check infrastructure
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+docker-compose exec postgres pg_isready
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+docker-compose exec redis redis-cli ping
+{{/if}}
+{{#if infrastructure.messageQueue}}
+curl http://localhost:8222/healthz
+{{/if}}
+```
+
+### Using Makefile
+
+Convenience commands for common operations:
+
+```bash
+# Show available commands
+make help
+
+# Initialize project (copy .env, create directories)
+make init
+
+# Start all services
+make up
+
+# View logs
+make logs
+
+# Check health
+make health
+
+# Stop services
+make down
+
+# Clean up (removes all data)
+make clean
+```
+
+---
+
+## Development Workflow
+
+### Starting Development Environment
+
+```bash
+# Start all services with logs
+make dev
+
+# Or manually:
+docker-compose up
+```
+
+This starts:
+1. Infrastructure services (PostgreSQL, Redis, NATS)
+2. All application services
+3. Streams logs to console
+
+### Hot Reload
+
+Services are configured for hot reload in development mode:
+
+- Source code is mounted as read-only volume
+- Changes are detected automatically
+- Services restart when code changes
+
+### Running Tests
+
+```bash
+# Run tests in all services
+make test
+
+# Or manually:
+{{#each services}}
+docker-compose exec {{this.name}} pnpm test
+{{/each}}
+```
+
+### Database Migrations
+
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+```bash
+# Access PostgreSQL shell
+make db-shell
+
+# Run migrations (if using migration tool)
+docker-compose exec {{#if services}}{{services.[0].name}}{{/if}} pnpm migrate
+
+# Seed database
+docker-compose exec {{#if services}}{{services.[0].name}}{{/if}} pnpm seed
+```
+{{/eq}}
+{{/if}}
+
+### Viewing Logs
+
+```bash
+# All services
+make logs
+
+# Specific service
+make logs-service SERVICE={{#if services}}{{services.[0].name}}{{/if}}
+
+# Filter by level
+docker-compose logs | grep ERROR
+docker-compose logs | grep INFO
+```
+
+### Accessing Service Shells
+
+```bash
+# Open shell in service container
+make shell SERVICE={{#if services}}{{services.[0].name}}{{/if}}
+
+# Or manually:
+docker-compose exec {{#if services}}{{services.[0].name}}{{/if}} sh
+```
+
+### Rebuilding Services
+
+```bash
+# Rebuild all services
+make build
+
+# Rebuild specific service
+docker-compose build {{#if services}}{{services.[0].name}}{{/if}}
+
+# Rebuild without cache
+docker-compose build --no-cache
+```
+
+---
+
+## Production Deployment
+
+### Environment Configuration
+
+**Critical settings for production**:
+
+```bash
+# General
+NODE_ENV=production
+LOG_LEVEL=info
+
+# Security
+JWT_SECRET=<generate-strong-random-string-min-32-chars>
+{{#if infrastructure.database}}
+POSTGRES_PASSWORD=<strong-database-password>
+{{/if}}
+{{#if infrastructure.cache}}
+REDIS_PASSWORD=<strong-redis-password>
+{{/if}}
+
+# CORS (restrict to your domain)
+CORS_ORIGIN=https://yourdomain.com
+```
+
+### Security Checklist
+
+- [ ] Change all default passwords
+- [ ] Generate strong JWT secret (use `openssl rand -base64 32`)
+- [ ] Configure CORS for production domain
+- [ ] Enable rate limiting on all public endpoints
+- [ ] Set up SSL/TLS certificates
+- [ ] Configure firewall rules to restrict port access
+- [ ] Use Docker secrets for sensitive data
+- [ ] Enable audit logging
+- [ ] Set up intrusion detection
+- [ ] Regular security updates and patches
+
+### Performance Optimization
+
+**Database**:
+- Connection pooling with appropriate limits
+- Index frequently queried columns
+- Regular VACUUM and ANALYZE
+- Monitor slow queries and optimize
+
+**Redis**:
+- Adjust maxmemory based on workload
+- Use appropriate eviction policy
+- Monitor memory fragmentation
+- Consider Redis Cluster for scaling
+
+**NATS**:
+- Configure appropriate message limits
+- Set up stream retention policies
+- Monitor JetStream storage usage
+- Use queue groups for load distribution
+
+**Services**:
+- Enable clustering for horizontal scaling
+- Configure appropriate CPU/memory limits
+- Use PM2 or similar for process management
+- Implement request caching strategies
+
+### Scaling Strategies
+
+**Horizontal Scaling**:
+```bash
+# Scale service replicas
+docker-compose up -d --scale {{#if services}}{{services.[0].name}}{{/if}}=3
+
+# Behind load balancer (Nginx, HAProxy, Traefik)
+```
+
+**Vertical Scaling**:
+```yaml
+# docker-compose.yml
+services:
+  {{#if services}}{{services.[0].name}}{{/if}}:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+```
+
+### High Availability
+
+**Database**:
+- PostgreSQL streaming replication
+- Automated failover with Patroni
+- Regular backups to remote storage
+
+**Redis**:
+- Redis Sentinel for automatic failover
+- Redis Cluster for data sharding
+- Backup AOF/RDB files to remote storage
+
+**NATS**:
+- NATS Cluster with 3+ nodes
+- JetStream replication
+- Monitoring with Prometheus
+
+### Backup Strategy
+
+**Automated Backups**:
+
+```bash
+# Create backup script (backup.sh)
+#!/bin/bash
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+
+# Database backup
+docker-compose exec -T postgres pg_dump -U postgres {{project.name}} | \
+  gzip > /backups/db-$TIMESTAMP.sql.gz
+
+# Redis backup
+docker-compose exec redis redis-cli BGSAVE
+
+# Upload to S3/GCS/Azure
+aws s3 cp /backups/db-$TIMESTAMP.sql.gz s3://your-backup-bucket/
+```
+
+**Backup Schedule**:
+- Daily full backups
+- Hourly incremental backups (WAL archiving)
+- Weekly backup verification
+- Off-site backup replication
+- 30-day retention policy
+
+---
+
+## Monitoring
+
+### Health Checks
+
+All services expose health endpoints:
+
+```bash
+# Service health (quick check)
+GET http://localhost:{{#if services}}{{services.[0].port}}{{/if}}/health
+
+# Response:
+{
+  "status": "healthy",
+  "timestamp": "2024-01-01T00:00:00.000Z",
+  "uptime": 12345
+}
+
+# Detailed health with dependencies
+GET http://localhost:{{#if services}}{{services.[0].port}}{{/if}}/ready
+
+# Response:
+{
+  "status": "ready",
+  "checks": {
+    "database": "healthy",
+    "redis": "healthy",
+    "nats": "healthy"
+  },
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+### Metrics
+
+Prometheus metrics available at `/metrics`:
+
+```bash
+# View metrics
+{{#each services}}
+curl http://localhost:{{this.port}}/metrics
+{{/each}}
+```
+
+**Key metrics**:
+- `http_request_duration_seconds` - Request latency
+- `http_requests_total` - Total requests
+- `process_cpu_seconds_total` - CPU usage
+- `process_resident_memory_bytes` - Memory usage
+- `nodejs_eventloop_lag_seconds` - Event loop lag
+
+### Logging
+
+Structured JSON logging with Pino:
+
+```json
+{
+  "level": 30,
+  "time": 1609459200000,
+  "pid": 1,
+  "hostname": "{{#if services}}{{services.[0].name}}{{/if}}",
+  "service": "{{#if services}}{{services.[0].name}}{{/if}}",
+  "msg": "Server listening",
+  "port": {{#if services}}{{services.[0].port}}{{/if}}
+}
+```
+
+**Log Levels**:
+- `10` - trace
+- `20` - debug
+- `30` - info (default)
+- `40` - warn
+- `50` - error
+- `60` - fatal
+
+**Viewing Logs**:
+```bash
+# Stream all logs
+docker-compose logs -f
+
+# Filter by service
+docker-compose logs -f {{#if services}}{{services.[0].name}}{{/if}}
+
+# Filter by level
+docker-compose logs | grep '"level":50'  # Errors only
+```
+
+### Alerting
+
+**Set up alerts for**:
+- Service health check failures
+- High error rates (> 5%)
+- High response times (> 1s p95)
+- Database connection issues
+- Redis memory usage (> 90%)
+- NATS message queue backlog
+- CPU/Memory limits reached
+- Disk space (> 80%)
+
+---
+
+## Troubleshooting
+
+### Service Won't Start
+
+**Check logs**:
+```bash
+docker-compose logs {{#if services}}{{services.[0].name}}{{/if}}
+```
+
+**Common issues**:
+- Port already in use
+- Missing environment variables
+- Database not ready
+- Insufficient resources
+
+**Solutions**:
+```bash
+# Check port usage
+lsof -i :{{#if services}}{{services.[0].port}}{{/if}}
+
+# Verify environment
+make env-check
+
+# Restart dependencies
+docker-compose restart postgres redis nats
+
+# Check Docker resources
+docker stats
+```
+
+### Database Connection Issues
+
+**Symptoms**:
+- Connection timeouts
+- "Connection refused" errors
+- Authentication failures
+
+**Diagnosis**:
+```bash
+# Check PostgreSQL is running
+docker-compose ps postgres
+
+# Test connection
+docker-compose exec postgres pg_isready -U postgres
+
+# Check logs
+docker-compose logs postgres
+
+# Verify network
+docker network inspect {{project.name}}-network
+```
+
+**Solutions**:
+```bash
+# Restart PostgreSQL
+docker-compose restart postgres
+
+# Reset database (⚠️ destroys data)
+make db-reset
+
+# Check credentials in .env
+cat .env | grep POSTGRES
+```
+
+### Redis Connection Issues
+
+**Diagnosis**:
+```bash
+# Check Redis is running
+docker-compose ps redis
+
+# Test connection
+docker-compose exec redis redis-cli ping
+
+# Check logs
+docker-compose logs redis
+```
+
+**Solutions**:
+```bash
+# Restart Redis
+docker-compose restart redis
+
+# Check memory usage
+docker-compose exec redis redis-cli INFO memory
+
+# Flush if memory full (⚠️ destroys cache)
+docker-compose exec redis redis-cli FLUSHALL
+```
+
+### NATS Connection Issues
+
+**Diagnosis**:
+```bash
+# Check NATS is running
+docker-compose ps nats
+
+# Check monitoring endpoint
+curl http://localhost:8222/varz
+
+# Check logs
+docker-compose logs nats
+```
+
+**Solutions**:
+```bash
+# Restart NATS
+docker-compose restart nats
+
+# Check connections
+curl http://localhost:8222/connz | jq
+
+# Check JetStream status
+curl http://localhost:8222/jsz | jq
+```
+
+### High Memory Usage
+
+**Diagnosis**:
+```bash
+# Check container memory
+docker stats --no-stream
+
+# Check service-specific memory
+docker-compose exec {{#if services}}{{services.[0].name}}{{/if}} node -e "console.log(process.memoryUsage())"
+```
+
+**Solutions**:
+- Increase Docker memory limits
+- Optimize application code
+- Reduce Redis maxmemory
+- Enable garbage collection tuning
+- Check for memory leaks
+
+### High CPU Usage
+
+**Diagnosis**:
+```bash
+# Monitor CPU usage
+docker stats
+
+# Check for infinite loops
+docker-compose logs {{#if services}}{{services.[0].name}}{{/if}} | grep -i "timeout\|loop\|recursion"
+```
+
+**Solutions**:
+- Profile application with Node.js profiler
+- Check database query performance
+- Optimize hot code paths
+- Add rate limiting
+- Scale horizontally
+
+### Data Corruption
+
+**Recovery**:
+```bash
+# Stop services
+make down
+
+# Restore from backup
+make db-restore FILE=backups/latest.sql
+
+# Restart services
+make up
+
+# Verify data integrity
+make health
+```
+
+---
+
+## Maintenance
+
+### Regular Tasks
+
+**Daily**:
+- Check health endpoints
+- Review error logs
+- Monitor resource usage
+
+**Weekly**:
+- Review slow query logs
+- Check backup integrity
+- Update security patches
+- Analyze metrics trends
+
+**Monthly**:
+- Full system backup
+- Disaster recovery test
+- Performance tuning review
+- Capacity planning
+
+### Backup Procedures
+
+**Create Backup**:
+```bash
+# Full system backup
+make backup-all
+
+# Database only
+make db-backup
+
+# Verify backup
+ls -lh backups/
+```
+
+**Restore Backup**:
+```bash
+# Restore database
+make db-restore FILE=backups/{{project.name}}-20240101-120000.sql
+
+# Restore volumes
+docker run --rm \
+  -v {{project.name}}-postgres-data:/data \
+  -v $(pwd)/backups:/backup \
+  alpine sh -c "cd /data && tar xzf /backup/postgres-data.tar.gz"
+```
+
+### Updates
+
+**Update Docker Images**:
+```bash
+# Pull latest images
+docker-compose pull
+
+# Rebuild services
+make rebuild
+
+# Restart services
+make restart
+```
+
+**Update Dependencies**:
+```bash
+# Update Node.js packages
+{{#each services}}
+docker-compose exec {{this.name}} pnpm update
+{{/each}}
+
+# Rebuild after updates
+make build
+```
+
+### Cleanup
+
+**Remove Unused Resources**:
+```bash
+# Prune Docker system
+make prune
+
+# Remove stopped containers
+docker container prune -f
+
+# Remove unused volumes
+docker volume prune -f
+
+# Remove unused images
+docker image prune -a -f
+```
+
+**Clear Application Data**:
+```bash
+# Clear Redis cache
+make redis-flush
+
+# Reset database (⚠️ destroys data)
+make db-reset
+
+# Remove all data (⚠️ destroys everything)
+make clean
+```
+
+---
+
+## Additional Resources
+
+### Documentation
+
+- [Docker Compose Documentation](https://docs.docker.com/compose/)
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/)
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+- [Redis Documentation](https://redis.io/documentation)
+{{/if}}
+{{#if infrastructure.messageQueue}}
+- [NATS Documentation](https://docs.nats.io/)
+{{/if}}
+- [Fastify Documentation](https://fastify.dev/)
+- [Pino Logging](https://getpino.io/)
+
+### Support
+
+For issues or questions:
+
+1. **Check Logs**: `make logs`
+2. **Verify Health**: `make health`
+3. **Review Documentation**: See service README files
+4. **Common Issues**: Check this troubleshooting section
+5. **Community**: Open an issue on GitHub
+
+---
+
+**Generated by SaaSQuatch** - Enterprise-Grade Tools for Ambitious Startups

@@ -1,0 +1,857 @@
+# {{project.name}} Production Deployment Guide
+
+Complete guide for deploying {{project.name}} to production environments.
+
+## Table of Contents
+
+1. [Overview](#overview)
+2. [Pre-Deployment Checklist](#pre-deployment-checklist)
+3. [Environment Configuration](#environment-configuration)
+4. [Deployment Options](#deployment-options)
+5. [Security Hardening](#security-hardening)
+6. [Performance Optimization](#performance-optimization)
+7. [Monitoring & Logging](#monitoring--logging)
+8. [Backup & Recovery](#backup--recovery)
+9. [Scaling Strategy](#scaling-strategy)
+10. [Rollback Procedures](#rollback-procedures)
+
+---
+
+## Overview
+
+This guide covers production deployment of {{project.name}}, including:
+
+- Security configuration
+- Performance optimization
+- High availability setup
+- Monitoring and alerting
+- Disaster recovery
+
+**Production Architecture**:
+- Containerized microservices with Docker
+- Load balancing with Nginx/Traefik
+- Database replication for high availability
+- Redis Sentinel/Cluster for cache HA
+- NATS Cluster for reliable messaging
+- SSL/TLS encryption for all connections
+- Automated backups and monitoring
+
+---
+
+## Pre-Deployment Checklist
+
+### Infrastructure Requirements
+
+- [ ] **Compute Resources**
+  - CPU: {{#if services}}{{services.length}}{{else}}3{{/if}}+ cores recommended
+  - RAM: 4GB minimum, 8GB+ recommended
+  - Storage: 50GB+ SSD storage
+  - Network: 1Gbps+ bandwidth
+
+- [ ] **Domain & DNS**
+  - Domain name registered
+  - DNS records configured
+  - SSL/TLS certificates obtained
+
+- [ ] **External Services**
+  - Email provider (SendGrid, AWS SES, etc.)
+  - Object storage (S3, GCS, etc.) for backups
+  - Monitoring service (Datadog, New Relic, etc.)
+  - Log aggregation (ELK, Splunk, Cloudwatch)
+
+- [ ] **Security**
+  - Firewall rules configured
+  - VPC/Private network setup
+  - Secrets management solution
+  - SSL/TLS certificates
+
+### Application Requirements
+
+- [ ] **Environment Variables**
+  - All secrets generated (JWT, database passwords)
+  - API keys for external services
+  - CORS origins configured
+  - Email service credentials
+
+- [ ] **Database**
+  - Backups configured
+  - Replication setup (if HA required)
+  - Connection pooling configured
+  - Indexes created
+
+- [ ] **Testing**
+  - Unit tests passing
+  - Integration tests passing
+  - Load testing completed
+  - Security scanning completed
+
+---
+
+## Environment Configuration
+
+### Production Environment Variables
+
+Create `.env.production`:
+
+```bash
+# ===================================================================
+# General Configuration
+# ===================================================================
+NODE_ENV=production
+LOG_LEVEL=info
+TZ=UTC
+
+# ===================================================================
+# Domain & URLs
+# ===================================================================
+APP_URL=https://{{project.name}}.com
+API_URL=https://api.{{project.name}}.com
+CORS_ORIGIN=https://{{project.name}}.com,https://www.{{project.name}}.com
+
+# ===================================================================
+# Database Configuration
+# ===================================================================
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+# PostgreSQL
+DATABASE_URL=postgres://{{project.name}}_user:<STRONG_PASSWORD>@postgres.internal:5432/{{project.name}}_production
+POSTGRES_USER={{project.name}}_user
+POSTGRES_PASSWORD=<GENERATE_STRONG_PASSWORD_MIN_32_CHARS>
+POSTGRES_DB={{project.name}}_production
+POSTGRES_PORT=5432
+
+# Connection pool settings
+DB_POOL_MIN=10
+DB_POOL_MAX=50
+DB_IDLE_TIMEOUT=30000
+DB_CONNECTION_TIMEOUT=10000
+{{/eq}}
+{{/if}}
+
+# ===================================================================
+# Redis Configuration
+# ===================================================================
+{{#if infrastructure.cache}}
+REDIS_URL=redis://:<REDIS_PASSWORD>@redis.internal:6379
+REDIS_PASSWORD=<GENERATE_STRONG_PASSWORD_MIN_32_CHARS>
+REDIS_TLS_ENABLED=true
+REDIS_POOL_MIN=5
+REDIS_POOL_MAX=20
+{{/if}}
+
+# ===================================================================
+# NATS Configuration
+# ===================================================================
+{{#if infrastructure.messageQueue}}
+NATS_URL=nats://nats.internal:4222
+NATS_TOKEN=<GENERATE_STRONG_TOKEN>
+NATS_MAX_RECONNECT_ATTEMPTS=10
+NATS_RECONNECT_TIME_WAIT=2000
+{{/if}}
+
+# ===================================================================
+# JWT Configuration
+# ===================================================================
+JWT_SECRET=<GENERATE_STRONG_SECRET_MIN_64_CHARS>
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_EXPIRES_IN=7d
+JWT_ALGORITHM=HS512
+
+# ===================================================================
+# Rate Limiting
+# ===================================================================
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_MAX=100
+RATE_LIMIT_WINDOW=15m
+RATE_LIMIT_GLOBAL=1000
+RATE_LIMIT_GLOBAL_WINDOW=1h
+
+# ===================================================================
+# Security
+# ===================================================================
+BCRYPT_ROUNDS=12
+SESSION_SECRET=<GENERATE_STRONG_SECRET_MIN_64_CHARS>
+CSRF_ENABLED=true
+HELMET_ENABLED=true
+
+# ===================================================================
+# Monitoring & Observability
+# ===================================================================
+ENABLE_METRICS=true
+ENABLE_TRACING=true
+METRICS_PORT=9090
+
+# APM
+APM_ENABLED=true
+APM_SERVICE_NAME={{project.name}}
+APM_SERVER_URL=https://apm.yourdomain.com
+
+# Logging
+LOG_FORMAT=json
+LOG_DESTINATION=stdout
+SENTRY_DSN=https://<key>@sentry.io/<project>
+
+# ===================================================================
+# External Services
+# ===================================================================
+# Email
+EMAIL_PROVIDER=sendgrid
+EMAIL_API_KEY=<SENDGRID_API_KEY>
+EMAIL_FROM=noreply@{{project.name}}.com
+
+# Object Storage (for backups)
+AWS_ACCESS_KEY_ID=<AWS_KEY>
+AWS_SECRET_ACCESS_KEY=<AWS_SECRET>
+AWS_REGION=us-east-1
+AWS_S3_BUCKET={{project.name}}-backups
+
+# ===================================================================
+# Service URLs
+# ===================================================================
+{{#each services}}
+{{uppercase this.name}}_URL=http://{{this.name}}.internal:{{this.port}}
+{{/each}}
+```
+
+### Generating Secrets
+
+```bash
+# JWT Secret (64 bytes)
+openssl rand -base64 64
+
+# Database Password (32 bytes)
+openssl rand -base64 32
+
+# Redis Password (32 bytes)
+openssl rand -base64 32
+
+# Session Secret (64 bytes)
+openssl rand -base64 64
+
+# NATS Token (32 bytes)
+openssl rand -base64 32
+```
+
+---
+
+## Deployment Options
+
+### Option 1: Docker Compose (Single Server)
+
+Best for small to medium applications on a single server.
+
+**Step 1**: Prepare server
+```bash
+# Install Docker
+curl -fsSL https://get.docker.com -o get-docker.sh
+sh get-docker.sh
+
+# Install Docker Compose V2
+sudo apt-get update
+sudo apt-get install docker-compose-plugin
+
+# Create application directory
+mkdir -p /opt/{{project.name}}
+cd /opt/{{project.name}}
+```
+
+**Step 2**: Deploy application
+```bash
+# Clone repository (or copy files)
+git clone https://github.com/yourorg/{{project.name}}.git .
+
+# Copy production environment
+cp .env.production .env
+
+# Edit environment variables
+nano .env
+
+# Start services
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# Check status
+docker-compose ps
+```
+
+**Step 3**: Configure reverse proxy (Nginx)
+```nginx
+# /etc/nginx/sites-available/{{project.name}}
+upstream {{project.name}}_backend {
+{{#each services}}
+    server localhost:{{this.port}};
+{{/each}}
+}
+
+server {
+    listen 80;
+    server_name {{project.name}}.com www.{{project.name}}.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name {{project.name}}.com www.{{project.name}}.com;
+
+    # SSL Configuration
+    ssl_certificate /etc/letsencrypt/live/{{project.name}}.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{project.name}}.com/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_prefer_server_ciphers on;
+
+    # Security Headers
+    add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+
+    # Proxy Configuration
+    location / {
+        proxy_pass http://{{project.name}}_backend;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Health check endpoint (bypass auth)
+    location /health {
+        access_log off;
+        proxy_pass http://{{project.name}}_backend;
+    }
+}
+```
+
+### Option 2: Kubernetes
+
+Best for large-scale applications requiring auto-scaling and high availability.
+
+**Prerequisites**:
+- Kubernetes cluster (GKE, EKS, AKS)
+- kubectl configured
+- Helm installed
+
+**Step 1**: Create namespace
+```bash
+kubectl create namespace {{project.name}}-prod
+kubectl config set-context --current --namespace={{project.name}}-prod
+```
+
+**Step 2**: Create secrets
+```bash
+# Database credentials
+kubectl create secret generic postgres-credentials \
+  --from-literal=username={{project.name}}_user \
+  --from-literal=password=<STRONG_PASSWORD>
+
+# JWT secret
+kubectl create secret generic jwt-secret \
+  --from-literal=secret=<JWT_SECRET>
+
+# Redis password
+kubectl create secret generic redis-credentials \
+  --from-literal=password=<REDIS_PASSWORD>
+```
+
+**Step 3**: Deploy with Helm (example)
+```bash
+# Add Helm repositories
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+
+# Install PostgreSQL
+helm install postgres bitnami/postgresql \
+  --set auth.existingSecret=postgres-credentials \
+  --set primary.persistence.size=50Gi
+
+# Install Redis
+helm install redis bitnami/redis \
+  --set auth.existingSecret=redis-credentials \
+  --set master.persistence.size=10Gi
+
+# Deploy application
+kubectl apply -f k8s/
+```
+
+### Option 3: Cloud Platform (AWS/GCP/Azure)
+
+**AWS**:
+- ECS/Fargate for containers
+- RDS for PostgreSQL
+- ElastiCache for Redis
+- Application Load Balancer
+- CloudWatch for monitoring
+
+**GCP**:
+- Cloud Run/GKE for containers
+- Cloud SQL for PostgreSQL
+- Memorystore for Redis
+- Cloud Load Balancing
+- Cloud Monitoring
+
+**Azure**:
+- Container Instances/AKS
+- Azure Database for PostgreSQL
+- Azure Cache for Redis
+- Application Gateway
+- Azure Monitor
+
+---
+
+## Security Hardening
+
+### Application Security
+
+**1. Environment Variables**
+```bash
+# Never commit secrets to git
+echo ".env*" >> .gitignore
+
+# Use secrets management
+# - AWS Secrets Manager
+# - HashiCorp Vault
+# - Docker Secrets
+# - Kubernetes Secrets
+```
+
+**2. JWT Configuration**
+```bash
+# Use strong algorithm
+JWT_ALGORITHM=HS512
+
+# Short-lived access tokens
+JWT_EXPIRES_IN=15m
+
+# Longer refresh tokens
+JWT_REFRESH_EXPIRES_IN=7d
+
+# Strong secret (min 64 bytes)
+JWT_SECRET=$(openssl rand -base64 64)
+```
+
+**3. Rate Limiting**
+```javascript
+// Implement rate limiting on all public endpoints
+{
+  "global": { "max": 1000, "window": "1h" },
+  "perRoute": {
+    "/api/auth/login": { "max": 5, "window": "15m" },
+    "/api/auth/register": { "max": 3, "window": "1h" },
+    "/api/*": { "max": 100, "window": "15m" }
+  }
+}
+```
+
+**4. CORS Configuration**
+```javascript
+// Restrict to your domains only
+{
+  origin: [
+    'https://{{project.name}}.com',
+    'https://www.{{project.name}}.com',
+    'https://admin.{{project.name}}.com'
+  ],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
+}
+```
+
+### Database Security
+
+```bash
+# Use separate user for application
+CREATE USER {{project.name}}_user WITH PASSWORD '<strong_password>';
+GRANT CONNECT ON DATABASE {{project.name}}_production TO {{project.name}}_user;
+GRANT USAGE ON SCHEMA public TO {{project.name}}_user;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO {{project.name}}_user;
+
+# Enable SSL connections only
+# In postgresql.conf:
+ssl = on
+ssl_cert_file = '/path/to/server.crt'
+ssl_key_file = '/path/to/server.key'
+
+# Restrict connections by IP
+# In pg_hba.conf:
+hostssl all {{project.name}}_user <app_server_ip>/32 md5
+```
+
+### Network Security
+
+**Firewall Rules**:
+```bash
+# Allow only necessary ports
+ufw allow 80/tcp     # HTTP (redirect to HTTPS)
+ufw allow 443/tcp    # HTTPS
+ufw allow 22/tcp     # SSH (restrict to specific IPs)
+
+# Deny all other inbound
+ufw default deny incoming
+ufw default allow outgoing
+
+# Enable firewall
+ufw enable
+```
+
+**Private Network**:
+- Services communicate via private network
+- Database not accessible from public internet
+- Redis not accessible from public internet
+- NATS not accessible from public internet
+
+### SSL/TLS Configuration
+
+**Let's Encrypt (Free)**:
+```bash
+# Install certbot
+sudo apt-get install certbot python3-certbot-nginx
+
+# Obtain certificate
+sudo certbot --nginx -d {{project.name}}.com -d www.{{project.name}}.com
+
+# Auto-renewal (cron)
+0 0 * * * certbot renew --quiet
+```
+
+---
+
+## Performance Optimization
+
+### Application Level
+
+**1. Connection Pooling**
+```javascript
+// PostgreSQL pool
+{
+  min: 10,
+  max: 50,
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 10000
+}
+
+// Redis pool
+{
+  min: 5,
+  max: 20,
+  idleTimeoutMillis: 30000
+}
+```
+
+**2. Caching Strategy**
+```javascript
+// Cache frequently accessed data
+// - User sessions (Redis)
+// - API responses (Redis)
+// - Database query results (Redis)
+
+// Cache invalidation
+// - Time-based (TTL)
+// - Event-based (NATS events)
+```
+
+**3. Database Optimization**
+```sql
+-- Create indexes on frequently queried columns
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_sessions_token ON sessions(token);
+
+-- Analyze query performance
+EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'user@example.com';
+
+-- Regular maintenance
+VACUUM ANALYZE;
+```
+
+### Infrastructure Level
+
+**1. Resource Limits**
+```yaml
+# docker-compose.prod.yml
+services:
+  {{#if services}}{{services.[0].name}}{{/if}}:
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 512M
+```
+
+**2. Load Balancing**
+```bash
+# Scale services horizontally
+docker-compose up -d --scale {{#if services}}{{services.[0].name}}{{/if}}=3
+
+# Configure load balancer (Nginx/HAProxy)
+# - Round robin
+# - Least connections
+# - IP hash
+```
+
+**3. CDN Integration**
+```bash
+# Serve static assets via CDN
+# - CloudFront (AWS)
+# - Cloud CDN (GCP)
+# - Azure CDN
+# - Cloudflare
+```
+
+---
+
+## Monitoring & Logging
+
+### Health Checks
+
+```bash
+# Configure uptime monitoring
+# - Pingdom
+# - UptimeRobot
+# - StatusCake
+
+# Health check endpoints
+GET /health     # Quick liveness check
+GET /ready      # Readiness with dependency checks
+GET /metrics    # Prometheus metrics
+```
+
+### Metrics Collection
+
+**Prometheus + Grafana**:
+```yaml
+# prometheus.yml
+scrape_configs:
+  - job_name: '{{project.name}}'
+    static_configs:
+{{#each services}}
+      - targets: ['{{this.name}}:{{this.port}}']
+{{/each}}
+```
+
+### Log Aggregation
+
+**ELK Stack**:
+```json
+{
+  "service": "{{#if services}}{{services.[0].name}}{{/if}}",
+  "level": "info",
+  "message": "Request processed",
+  "duration": 45,
+  "statusCode": 200,
+  "timestamp": "2024-01-01T00:00:00.000Z"
+}
+```
+
+### Alerting Rules
+
+```yaml
+# Example alerts
+alerts:
+  - name: HighErrorRate
+    expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+    severity: critical
+
+  - name: HighResponseTime
+    expr: histogram_quantile(0.95, http_request_duration_seconds) > 1
+    severity: warning
+
+  - name: DatabaseDown
+    expr: up{job="postgres"} == 0
+    severity: critical
+```
+
+---
+
+## Backup & Recovery
+
+### Automated Backups
+
+**Backup Script**:
+```bash
+#!/bin/bash
+# /opt/{{project.name}}/scripts/backup.sh
+
+set -e
+
+TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR="/backups/{{project.name}}"
+S3_BUCKET="s3://{{project.name}}-backups"
+
+# Database backup
+docker-compose exec -T postgres pg_dump -U postgres {{project.name}}_production | \
+  gzip > "$BACKUP_DIR/db-$TIMESTAMP.sql.gz"
+
+# Upload to S3
+aws s3 cp "$BACKUP_DIR/db-$TIMESTAMP.sql.gz" "$S3_BUCKET/db/"
+
+# Cleanup old backups (keep last 30 days)
+find "$BACKUP_DIR" -name "db-*.sql.gz" -mtime +30 -delete
+
+# Verify backup
+aws s3 ls "$S3_BUCKET/db/db-$TIMESTAMP.sql.gz"
+
+echo "Backup completed: db-$TIMESTAMP.sql.gz"
+```
+
+**Cron Schedule**:
+```cron
+# Daily backups at 2 AM
+0 2 * * * /opt/{{project.name}}/scripts/backup.sh
+
+# Weekly full backup at 3 AM Sunday
+0 3 * * 0 /opt/{{project.name}}/scripts/full-backup.sh
+```
+
+### Disaster Recovery
+
+**Recovery Time Objective (RTO)**: 1 hour
+**Recovery Point Objective (RPO)**: 24 hours
+
+**Recovery Procedure**:
+```bash
+# 1. Provision new server/cluster
+# 2. Install Docker and dependencies
+# 3. Restore from latest backup
+cd /opt/{{project.name}}
+aws s3 cp s3://{{project.name}}-backups/db/db-latest.sql.gz .
+gunzip db-latest.sql.gz
+
+# 4. Start infrastructure
+docker-compose up -d postgres redis nats
+
+# 5. Restore database
+docker-compose exec -T postgres psql -U postgres {{project.name}}_production < db-latest.sql
+
+# 6. Start services
+docker-compose up -d
+
+# 7. Verify health
+make health
+```
+
+---
+
+## Scaling Strategy
+
+### Horizontal Scaling
+
+**Application Services**:
+```bash
+# Scale specific service
+docker-compose up -d --scale {{#if services}}{{services.[0].name}}{{/if}}=5
+
+# Kubernetes autoscaling
+kubectl autoscale deployment {{#if services}}{{services.[0].name}}{{/if}} \
+  --min=3 --max=10 --cpu-percent=70
+```
+
+**Database**:
+- PostgreSQL: Read replicas for read-heavy workloads
+- Redis: Redis Cluster for data sharding
+- NATS: NATS Cluster for high availability
+
+### Vertical Scaling
+
+```yaml
+# Increase resources
+deploy:
+  resources:
+    limits:
+      cpus: '4'
+      memory: 8G
+```
+
+### Auto-Scaling
+
+**Kubernetes HPA**:
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{#if services}}{{services.[0].name}}{{/if}}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{#if services}}{{services.[0].name}}{{/if}}
+  minReplicas: 3
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+```
+
+---
+
+## Rollback Procedures
+
+### Application Rollback
+
+**Docker Compose**:
+```bash
+# Tag current version before deploying
+docker-compose images
+
+# Deploy new version
+git pull
+docker-compose up -d --build
+
+# If issues occur, rollback to previous image
+docker-compose down
+docker tag {{project.name}}:previous {{project.name}}:latest
+docker-compose up -d
+```
+
+**Kubernetes**:
+```bash
+# Rollback to previous revision
+kubectl rollout undo deployment/{{#if services}}{{services.[0].name}}{{/if}}
+
+# Rollback to specific revision
+kubectl rollout undo deployment/{{#if services}}{{services.[0].name}}{{/if}} --to-revision=3
+
+# Check rollout status
+kubectl rollout status deployment/{{#if services}}{{services.[0].name}}{{/if}}
+```
+
+### Database Rollback
+
+```bash
+# Restore from backup before migration
+docker-compose exec -T postgres psql -U postgres {{project.name}}_production < backup-pre-migration.sql
+
+# Revert migration (if using migration tool)
+docker-compose exec {{#if services}}{{services.[0].name}}{{/if}} pnpm migrate:rollback
+```
+
+---
+
+## Support
+
+For production issues:
+
+1. **Check Monitoring Dashboards**
+2. **Review Application Logs**
+3. **Verify Health Endpoints**
+4. **Check Database Connections**
+5. **Review Recent Deployments**
+6. **Contact DevOps Team**
+
+---
+
+**Generated by SaaSQuatch** - Enterprise-Grade Tools for Ambitious Startups

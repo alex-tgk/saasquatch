@@ -1,0 +1,308 @@
+import { FastifyPluginAsync } from 'fastify';
+import { UserRepository } from '../repositories/user.repository.js';
+import {
+  CreateUserSchema,
+  UpdateUserSchema,
+  UserResponseSchema,
+  UserListResponseSchema,
+  ErrorResponseSchema,
+  UserIdParamSchema,
+  PaginationQuerySchema,
+} from '../models/user.model.js';
+{{#if infrastructure.messageQueue}}
+import {
+  publishUserCreated,
+  publishUserUpdated,
+  publishUserDeleted,
+} from '../events/user.events.js';
+{{/if}}
+
+/**
+ * User routes implementing CRUD operations with JWT authentication
+ * and multi-tenancy support.
+ *
+ * All routes are protected by JWT authentication middleware.
+ * Tenant context is extracted from the JWT and used for data isolation.
+ */
+export const userRoutes: FastifyPluginAsync = async (fastify) => {
+  const userRepo = new UserRepository(fastify.db);
+
+  // GET /users - List all users (tenant-scoped, paginated)
+  fastify.get(
+    '/users',
+    {
+      schema: {
+        description: 'List all users for the authenticated tenant with pagination',
+        tags: ['Users'],
+        security: [{ bearerAuth: [] }],
+        querystring: PaginationQuerySchema,
+        response: {
+          200: UserListResponseSchema,
+          401: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const { limit = 10, offset = 0 } = request.query as { limit?: number; offset?: number };
+
+      try {
+        // Get total count and users in parallel
+        const [users, total] = await Promise.all([
+          userRepo.findAll(request.tenantId, limit, offset),
+          userRepo.count(request.tenantId),
+        ]);
+
+        return {
+          data: users.map((u) => ({
+            id: u.id,
+            email: u.email,
+            name: u.name,
+            avatarUrl: u.avatar_url,
+            createdAt: u.created_at.toISOString(),
+            updatedAt: u.updated_at.toISOString(),
+          })),
+          pagination: {
+            limit,
+            offset,
+            total,
+          },
+        };
+      } catch (error) {
+        fastify.log.error({ error, tenantId: request.tenantId }, 'Failed to fetch users');
+        return reply.code(500).send({ error: 'Failed to fetch users' });
+      }
+    }
+  );
+
+  // GET /users/:id - Get user by ID
+  fastify.get(
+    '/users/:id',
+    {
+      schema: {
+        description: 'Get a specific user by ID',
+        tags: ['Users'],
+        security: [{ bearerAuth: [] }],
+        params: UserIdParamSchema,
+        response: {
+          200: UserResponseSchema,
+          401: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      try {
+        const user = await userRepo.findById(id, request.tenantId);
+
+        if (!user) {
+          return reply.code(404).send({ error: 'User not found' });
+        }
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatar_url,
+          createdAt: user.created_at.toISOString(),
+          updatedAt: user.updated_at.toISOString(),
+        };
+      } catch (error) {
+        fastify.log.error({ error, userId: id, tenantId: request.tenantId }, 'Failed to fetch user');
+        return reply.code(500).send({ error: 'Failed to fetch user' });
+      }
+    }
+  );
+
+  // POST /users - Create user
+  fastify.post(
+    '/users',
+    {
+      schema: {
+        description: 'Create a new user',
+        tags: ['Users'],
+        security: [{ bearerAuth: [] }],
+        body: CreateUserSchema,
+        response: {
+          201: UserResponseSchema,
+          400: ErrorResponseSchema,
+          401: ErrorResponseSchema,
+          409: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const userData = request.body as { email: string; name: string; avatarUrl?: string };
+
+      try {
+        // Check if user with email already exists
+        const existingUser = await userRepo.findByEmail(userData.email, request.tenantId);
+        if (existingUser) {
+          return reply.code(409).send({ error: 'User with this email already exists' });
+        }
+
+        // Create user
+        const user = await userRepo.create(userData, request.tenantId);
+
+        fastify.log.info({ userId: user.id, tenantId: request.tenantId }, 'User created successfully');
+
+        {{#if infrastructure.messageQueue}}
+        // Publish user.created event (non-blocking)
+        publishUserCreated(fastify, {
+          userId: user.id,
+          email: user.email,
+          tenantId: request.tenantId,
+          timestamp: Date.now(),
+        }).catch((error) => {
+          fastify.log.error({ error, userId: user.id }, 'Failed to publish user.created event');
+        });
+        {{/if}}
+
+        return reply.code(201).send({
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatar_url,
+          createdAt: user.created_at.toISOString(),
+          updatedAt: user.updated_at.toISOString(),
+        });
+      } catch (error) {
+        fastify.log.error({ error, email: userData.email, tenantId: request.tenantId }, 'Failed to create user');
+        return reply.code(500).send({ error: 'Failed to create user' });
+      }
+    }
+  );
+
+  // PUT /users/:id - Update user
+  fastify.put(
+    '/users/:id',
+    {
+      schema: {
+        description: 'Update an existing user',
+        tags: ['Users'],
+        security: [{ bearerAuth: [] }],
+        params: UserIdParamSchema,
+        body: UpdateUserSchema,
+        response: {
+          200: UserResponseSchema,
+          400: ErrorResponseSchema,
+          401: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const updates = request.body as { name?: string; avatarUrl?: string };
+
+      try {
+        // Check if user exists
+        const existingUser = await userRepo.findById(id, request.tenantId);
+        if (!existingUser) {
+          return reply.code(404).send({ error: 'User not found' });
+        }
+
+        // Track changes for event
+        const changes: Record<string, any> = {};
+        if (updates.name && updates.name !== existingUser.name) {
+          changes.name = { from: existingUser.name, to: updates.name };
+        }
+        if (updates.avatarUrl !== undefined && updates.avatarUrl !== existingUser.avatar_url) {
+          changes.avatarUrl = { from: existingUser.avatar_url, to: updates.avatarUrl };
+        }
+
+        // Update user
+        const user = await userRepo.update(id, updates, request.tenantId);
+
+        fastify.log.info({ userId: id, changes, tenantId: request.tenantId }, 'User updated successfully');
+
+        {{#if infrastructure.messageQueue}}
+        // Publish user.updated event (non-blocking)
+        if (Object.keys(changes).length > 0) {
+          publishUserUpdated(fastify, {
+            userId: id,
+            changes,
+            tenantId: request.tenantId,
+            timestamp: Date.now(),
+          }).catch((error) => {
+            fastify.log.error({ error, userId: id }, 'Failed to publish user.updated event');
+          });
+        }
+        {{/if}}
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          avatarUrl: user.avatar_url,
+          createdAt: user.created_at.toISOString(),
+          updatedAt: user.updated_at.toISOString(),
+        };
+      } catch (error) {
+        fastify.log.error({ error, userId: id, tenantId: request.tenantId }, 'Failed to update user');
+        return reply.code(500).send({ error: 'Failed to update user' });
+      }
+    }
+  );
+
+  // DELETE /users/:id - Delete user (soft delete)
+  fastify.delete(
+    '/users/:id',
+    {
+      schema: {
+        description: 'Delete a user (soft delete - sets deleted_at timestamp)',
+        tags: ['Users'],
+        security: [{ bearerAuth: [] }],
+        params: UserIdParamSchema,
+        response: {
+          204: { type: 'null', description: 'User deleted successfully' },
+          401: ErrorResponseSchema,
+          404: ErrorResponseSchema,
+          500: ErrorResponseSchema,
+        },
+      },
+      onRequest: [fastify.authenticate],
+    },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+
+      try {
+        // Check if user exists
+        const existingUser = await userRepo.findById(id, request.tenantId);
+        if (!existingUser) {
+          return reply.code(404).send({ error: 'User not found' });
+        }
+
+        // Soft delete user
+        await userRepo.delete(id, request.tenantId);
+
+        fastify.log.info({ userId: id, tenantId: request.tenantId }, 'User deleted successfully');
+
+        {{#if infrastructure.messageQueue}}
+        // Publish user.deleted event (non-blocking)
+        publishUserDeleted(fastify, {
+          userId: id,
+          tenantId: request.tenantId,
+          timestamp: Date.now(),
+        }).catch((error) => {
+          fastify.log.error({ error, userId: id }, 'Failed to publish user.deleted event');
+        });
+        {{/if}}
+
+        return reply.code(204).send();
+      } catch (error) {
+        fastify.log.error({ error, userId: id, tenantId: request.tenantId }, 'Failed to delete user');
+        return reply.code(500).send({ error: 'Failed to delete user' });
+      }
+    }
+  );
+};

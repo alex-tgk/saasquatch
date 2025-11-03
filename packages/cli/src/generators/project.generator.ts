@@ -415,9 +415,40 @@ MIT
       );
     }
     if (service.features.messageQueue) {
+      // Generate NATS publisher plugin
       await this.renderer.renderToFile(
-        'base-service/src/plugins/nats.ts.hbs',
-        path.join(serviceDir, 'src/plugins/nats.ts'),
+        'base-service/src/plugins/nats-publisher.ts.hbs',
+        path.join(serviceDir, 'src/plugins/nats-publisher.ts'),
+        context
+      );
+
+      // Generate NATS subscriber plugin
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/nats-subscriber.ts.hbs',
+        path.join(serviceDir, 'src/plugins/nats-subscriber.ts'),
+        context
+      );
+
+      // Generate event types
+      await this.renderer.renderToFile(
+        'base-service/src/types/events.ts.hbs',
+        path.join(serviceDir, 'src/types/events.ts'),
+        context
+      );
+
+      // Generate tenant service (needed for subscriber)
+      if (service.features.database) {
+        await this.renderer.renderToFile(
+          'base-service/src/services/tenant.service.ts.hbs',
+          path.join(serviceDir, 'src/services/tenant.service.ts'),
+          context
+        );
+      }
+
+      // Generate NATS integration tests
+      await this.renderer.renderToFile(
+        'base-service/test/integration/nats-events.test.ts.hbs',
+        path.join(serviceDir, 'test/integration/nats-events.test.ts'),
         context
       );
     }
@@ -464,6 +495,22 @@ MIT
       context
     );
 
+    // Generate tenant plugin (for multi-tenancy support)
+    if (this.config.infrastructure.database.multiTenancy?.enabled && service.features.database) {
+      await this.renderer.renderToFile(
+        'base-service/src/plugins/tenant.ts.hbs',
+        path.join(serviceDir, 'src/plugins/tenant.ts'),
+        context
+      );
+
+      // Generate TenantService
+      await this.renderer.renderToFile(
+        'base-service/src/services/tenant.service.ts.hbs',
+        path.join(serviceDir, 'src/services/tenant.service.ts'),
+        context
+      );
+    }
+
     // Generate health check routes
     if (service.features.healthChecks) {
       await this.renderer.renderToFile(
@@ -502,10 +549,98 @@ MIT
       );
     }
 
+    // Generate user-service specific templates (CRUD operations with repository pattern)
+    if (service.name === 'user-service' || service.name.includes('user')) {
+      // Create repositories directory
+      await fs.ensureDir(path.join(serviceDir, 'src/repositories'));
+
+      // Generate UserRepository with repository pattern
+      await this.renderer.renderToFile(
+        'user-service/src/repositories/user.repository.ts.hbs',
+        path.join(serviceDir, 'src/repositories/user.repository.ts'),
+        context
+      );
+
+      // Generate user models with JSON Schema validation
+      await this.renderer.renderToFile(
+        'user-service/src/models/user.model.ts.hbs',
+        path.join(serviceDir, 'src/models/user.model.ts'),
+        context
+      );
+
+      // Generate user routes with CRUD operations
+      await this.renderer.renderToFile(
+        'user-service/src/routes/users.ts.hbs',
+        path.join(serviceDir, 'src/routes/users.ts'),
+        context
+      );
+
+      // Generate auth middleware
+      await fs.ensureDir(path.join(serviceDir, 'src/middleware'));
+      await this.renderer.renderToFile(
+        'user-service/src/middleware/auth.middleware.ts.hbs',
+        path.join(serviceDir, 'src/middleware/auth.middleware.ts'),
+        context
+      );
+
+      // Generate user events (if message queue enabled)
+      if (service.features.messageQueue) {
+        await fs.ensureDir(path.join(serviceDir, 'src/events'));
+        await this.renderer.renderToFile(
+          'user-service/src/events/user.events.ts.hbs',
+          path.join(serviceDir, 'src/events/user.events.ts'),
+          context
+        );
+      }
+
+      // Generate unit tests for repository
+      await fs.ensureDir(path.join(serviceDir, 'test/unit'));
+      await this.renderer.renderToFile(
+        'user-service/test/unit/user.repository.test.ts.hbs',
+        path.join(serviceDir, 'test/unit/user.repository.test.ts'),
+        context
+      );
+
+      // Generate unit tests for routes
+      await this.renderer.renderToFile(
+        'user-service/test/unit/users.routes.test.ts.hbs',
+        path.join(serviceDir, 'test/unit/users.routes.test.ts'),
+        context
+      );
+
+      // Override app.ts with user-service version
+      await this.renderer.renderToFile(
+        'user-service/src/app.ts.hbs',
+        path.join(serviceDir, 'src/app.ts'),
+        context
+      );
+
+      // Generate index.ts (server entry point)
+      await this.renderer.renderToFile(
+        'user-service/src/index.ts.hbs',
+        path.join(serviceDir, 'src/index.ts'),
+        context
+      );
+    }
+
     // Generate port manager utility (for dynamic port allocation)
     await this.renderer.renderToFile(
       'base-service/src/utils/port-manager.ts.hbs',
       path.join(serviceDir, 'src/utils/port-manager.ts'),
+      context
+    );
+
+    // Generate circuit breaker utility (for service-to-service communication)
+    await this.renderer.renderToFile(
+      'base-service/src/utils/circuit-breaker.ts.hbs',
+      path.join(serviceDir, 'src/utils/circuit-breaker.ts'),
+      context
+    );
+
+    // Generate service client utility (for inter-service HTTP calls)
+    await this.renderer.renderToFile(
+      'base-service/src/utils/service-client.ts.hbs',
+      path.join(serviceDir, 'src/utils/service-client.ts'),
       context
     );
 
@@ -608,6 +743,15 @@ MIT
         context
       );
 
+      // Generate tenant isolation tests (if multi-tenancy is enabled)
+      if (this.config.infrastructure.database.multiTenancy?.enabled && service.features.database) {
+        await this.renderer.renderToFile(
+          'base-service/test/integration/tenant-isolation.test.ts.hbs',
+          path.join(serviceDir, 'test/integration/tenant-isolation.test.ts'),
+          context
+        );
+      }
+
       // Generate authentication documentation
       await this.renderer.renderToFile(
         'base-service/docs/AUTH-README.md.hbs',
@@ -640,6 +784,22 @@ MIT
       await this.renderer.renderToFile(
         'base-service/test/routes/health.test.ts.hbs',
         path.join(serviceDir, 'test/routes/health.test.ts'),
+        context
+      );
+    }
+
+    // Generate circuit breaker unit tests
+    await this.renderer.renderToFile(
+      'base-service/test/unit/circuit-breaker.test.ts.hbs',
+      path.join(serviceDir, 'test/unit/circuit-breaker.test.ts'),
+      context
+    );
+
+    // Generate service-to-service integration tests (for services with authentication)
+    if (service.features.jwt || service.features.authentication) {
+      await this.renderer.renderToFile(
+        'base-service/test/integration/service-to-service.test.ts.hbs',
+        path.join(serviceDir, 'test/integration/service-to-service.test.ts'),
         context
       );
     }
@@ -1405,99 +1565,136 @@ export * from './config/index.js';
   }
 
   private async generateInfrastructure(projectDir: string): Promise<void> {
-    // Docker Compose file
-    const dockerCompose = {
-      version: '3.8',
-      services: {
-        ...(this.config.infrastructure.database.type === 'postgresql' ? {
-          postgres: {
-            image: `postgres:${this.config.infrastructure.database.version || '16-alpine'}`,
-            environment: {
-              POSTGRES_USER: 'postgres',
-              POSTGRES_PASSWORD: 'postgres',
-              POSTGRES_DB: this.config.project.name.replace(/-/g, '_'),
-            },
-            ports: ['5432:5432'],
-            volumes: [
-              './infrastructure/docker/postgres-data:/var/lib/postgresql/data',
-              './infrastructure/init.sql:/docker-entrypoint-initdb.d/init.sql:ro',
-            ],
-            healthcheck: {
-              test: ['CMD-SHELL', 'pg_isready -U postgres'],
-              interval: '10s',
-              timeout: '5s',
-              retries: 5,
-            },
-          },
-        } : {}),
-        redis: {
-          image: `redis:${this.config.infrastructure.cache.version || '7-alpine'}`,
-          ports: ['6379:6379'],
-          volumes: [
-            './infrastructure/docker/redis-data:/data',
-          ],
-          healthcheck: {
-            test: ['CMD', 'redis-cli', 'ping'],
-            interval: '10s',
-            timeout: '5s',
-            retries: 5,
-          },
-        },
-        nats: {
-          image: `nats:${this.config.infrastructure.messageQueue.version || '2.10-alpine'}`,
-          ports: [
-            '4222:4222',
-            '8222:8222',
-          ],
-          command: '--http_port 8222',
-          healthcheck: {
-            test: ['CMD', 'nc', '-z', 'localhost', '4222'],
-            interval: '10s',
-            timeout: '5s',
-            retries: 5,
-          },
-        },
-      },
-      networks: {
-        default: {
-          name: `${this.config.project.name}-network`,
-        },
-      },
-      volumes: {
-        'postgres-data': {},
-        'redis-data': {},
-      },
+    const infraDir = path.join(projectDir, 'infrastructure');
+
+    // Create infrastructure directories
+    const infraDirs = [
+      '',
+      'init-scripts',
+      'redis',
+      'nats',
+      'nginx',
+      'nginx/conf.d',
+      'docs',
+      'backups',
+      'logs',
+    ];
+
+    for (const dir of infraDirs) {
+      await fs.ensureDir(path.join(infraDir, dir));
+    }
+
+    const context = {
+      project: this.config.project,
+      services: this.config.services,
+      infrastructure: this.config.infrastructure,
+      observability: this.config.observability,
     };
 
-    await fs.writeFile(
+    // Generate Docker Compose files
+    await this.renderer.renderToFile(
+      'infrastructure/docker-compose.yml.hbs',
       path.join(projectDir, 'docker-compose.yml'),
-      `# Docker Compose configuration for ${this.config.project.name}
-# Generated by SaaSQuatch CLI
-
-${yaml.stringify(dockerCompose)}`
+      context
     );
 
-    // PostgreSQL initialization script
+    await this.renderer.renderToFile(
+      'infrastructure/docker-compose.prod.yml.hbs',
+      path.join(projectDir, 'docker-compose.prod.yml'),
+      context
+    );
+
+    await this.renderer.renderToFile(
+      'infrastructure/docker-compose.override.yml.example.hbs',
+      path.join(projectDir, 'docker-compose.override.yml.example'),
+      context
+    );
+
+    // Generate environment files
+    await this.renderer.renderToFile(
+      'infrastructure/.env.example.hbs',
+      path.join(projectDir, '.env.example'),
+      context
+    );
+
+    // Generate Makefile
+    await this.renderer.renderToFile(
+      'infrastructure/Makefile.hbs',
+      path.join(infraDir, 'Makefile'),
+      context
+    );
+
+    // Generate .gitignore for infrastructure
+    await this.renderer.renderToFile(
+      'infrastructure/.gitignore.hbs',
+      path.join(infraDir, '.gitignore'),
+      context
+    );
+
+    // PostgreSQL initialization scripts
     if (this.config.infrastructure.database.type === 'postgresql') {
-      const initSql = `-- Initialization script for PostgreSQL
--- Creates databases for each service that needs one
-
-${this.config.services
-  .filter(s => s.features.database)
-  .map(s => `CREATE DATABASE ${s.name.replace(/-/g, '_')};`)
-  .join('\n')}
-
--- Create extensions
-\\c ${this.config.services.find(s => s.features.database)?.name.replace(/-/g, '_') || this.config.project.name.replace(/-/g, '_')}
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-${this.config.infrastructure.database.multiTenancy?.enabled ? 'CREATE EXTENSION IF NOT EXISTS "pg_stat_statements";' : ''}
-`;
-
-      await fs.writeFile(
-        path.join(projectDir, 'infrastructure/init.sql'),
-        initSql
+      await this.renderer.renderToFile(
+        'infrastructure/init-scripts/01-init-database.sql.hbs',
+        path.join(infraDir, 'init-scripts/01-init-database.sql'),
+        context
       );
     }
+
+    // Redis configuration
+    if (this.config.infrastructure.cache.type === 'redis') {
+      await this.renderer.renderToFile(
+        'infrastructure/redis/redis.conf.hbs',
+        path.join(infraDir, 'redis/redis.conf'),
+        context
+      );
+    }
+
+    // NATS configuration
+    if (this.config.infrastructure.messageQueue.type === 'nats') {
+      await this.renderer.renderToFile(
+        'infrastructure/nats/nats.conf.hbs',
+        path.join(infraDir, 'nats/nats.conf'),
+        context
+      );
+    }
+
+    // Nginx configuration
+    await this.renderer.renderToFile(
+      'infrastructure/nginx/nginx.conf.hbs',
+      path.join(infraDir, 'nginx/nginx.conf'),
+      context
+    );
+
+    await this.renderer.renderToFile(
+      'infrastructure/nginx/conf.d/default.conf.hbs',
+      path.join(infraDir, 'nginx/conf.d/default.conf'),
+      context
+    );
+
+    // Infrastructure documentation
+    await this.renderer.renderToFile(
+      'infrastructure/README.md.hbs',
+      path.join(infraDir, 'README.md'),
+      context
+    );
+
+    await this.renderer.renderToFile(
+      'infrastructure/QUICK-START.md.hbs',
+      path.join(infraDir, 'QUICK-START.md'),
+      context
+    );
+
+    await this.renderer.renderToFile(
+      'infrastructure/docs/INFRASTRUCTURE.md.hbs',
+      path.join(infraDir, 'docs/INFRASTRUCTURE.md'),
+      context
+    );
+
+    await this.renderer.renderToFile(
+      'infrastructure/docs/DEPLOYMENT.md.hbs',
+      path.join(infraDir, 'docs/DEPLOYMENT.md'),
+      context
+    );
 
     // Development environment setup script
     const setupScript = `#!/bin/bash
@@ -1538,12 +1735,12 @@ echo "Run '${this.getDevCommand()}' to start all services"
 `;
 
     await fs.writeFile(
-      path.join(projectDir, 'infrastructure/setup.sh'),
+      path.join(infraDir, 'setup.sh'),
       setupScript
     );
 
     // Make setup script executable
-    await fs.chmod(path.join(projectDir, 'infrastructure/setup.sh'), 0o755);
+    await fs.chmod(path.join(infraDir, 'setup.sh'), 0o755);
   }
 
   private async generateDashboard(projectDir: string): Promise<void> {

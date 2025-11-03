@@ -1,0 +1,327 @@
+# Production Docker Compose Override
+# Usage: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+version: '3.8'
+
+services:
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+  postgres:
+    # Production-specific configuration
+    command: >
+      postgres
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c maintenance_work_mem=64MB
+      -c checkpoint_completion_target=0.9
+      -c wal_buffers=16MB
+      -c default_statistics_target=100
+      -c random_page_cost=1.1
+      -c effective_io_concurrency=200
+      -c work_mem=2621kB
+      -c min_wal_size=1GB
+      -c max_wal_size=4GB
+      -c max_connections=200
+    environment:
+      # Production database name
+      POSTGRES_DB: ${POSTGRES_DB:-{{project.name}}_production}
+    volumes:
+      # Named volume for persistence
+      - postgres_prod_data:/var/lib/postgresql/data
+      # Backup directory
+      - ./backups/postgres:/backups
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    # Remove port exposure for security (access via private network)
+    ports: []
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.cache}}
+{{#eq infrastructure.cache.type "redis"}}
+  redis:
+    # Production-specific configuration
+    command: >
+      redis-server
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 512mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --requirepass ${REDIS_PASSWORD}
+      --maxclients 10000
+      --tcp-backlog 511
+      --timeout 300
+      --tcp-keepalive 300
+      --loglevel notice
+      --lazyfree-lazy-eviction yes
+      --lazyfree-lazy-expire yes
+      --lazyfree-lazy-server-del yes
+      --replica-lazy-flush yes
+    environment:
+      # Redis password required in production
+      - REDIS_PASSWORD=${REDIS_PASSWORD}
+    volumes:
+      - redis_prod_data:/data
+      - ./backups/redis:/backups
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Remove port exposure for security
+    ports: []
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+{{/eq}}
+{{/if}}
+
+{{#if infrastructure.messageQueue}}
+{{#eq infrastructure.messageQueue.type "nats"}}
+  nats:
+    # Production-specific configuration
+    command: >
+      --jetstream
+      --store_dir /data
+      --max_file_store 10GB
+      --max_payload 2MB
+      --http_port 8222
+      --max_connections 10000
+      --max_subscriptions 10000
+      --max_pending 128MB
+      --write_deadline 10s
+    volumes:
+      - nats_prod_data:/data
+      - ./backups/nats:/backups
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    # Remove monitoring port from public access
+    ports:
+      - "127.0.0.1:8222:8222"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
+{{/eq}}
+{{/if}}
+
+{{#each services}}
+  {{this.name}}:
+    # Use specific version tag in production
+    image: {{../project.name}}/{{this.name}}:${VERSION:-latest}
+
+    # Production environment
+    environment:
+      NODE_ENV: production
+
+      # Performance tuning
+      NODE_OPTIONS: "--max-old-space-size=2048 --max-http-header-size=16384"
+      UV_THREADPOOL_SIZE: 16
+
+      # Logging
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_FORMAT: json
+      LOG_DESTINATION: stdout
+
+      # Security
+      HELMET_ENABLED: true
+      CORS_ORIGIN: ${CORS_ORIGIN}
+      RATE_LIMIT_ENABLED: true
+
+      # Monitoring
+      ENABLE_METRICS: true
+      ENABLE_TRACING: ${ENABLE_TRACING:-true}
+      APM_ENABLED: ${APM_ENABLED:-false}
+      APM_SERVER_URL: ${APM_SERVER_URL}
+
+      # Database connection (internal)
+{{#if this.features.database}}
+{{#eq ../infrastructure.database.type "postgresql"}}
+      DATABASE_URL: postgres://$${POSTGRES_USER}:$${POSTGRES_PASSWORD}@postgres:5432/$${POSTGRES_DB:-{{../project.name}}_production}
+      DATABASE_POOL_MIN: ${DB_POOL_MIN:-10}
+      DATABASE_POOL_MAX: ${DB_POOL_MAX:-50}
+{{/eq}}
+{{/if}}
+
+      # Redis connection (internal with password)
+{{#if this.features.cache}}
+      REDIS_URL: redis://:$${REDIS_PASSWORD}@redis:6379
+      REDIS_POOL_MIN: ${REDIS_POOL_MIN:-5}
+      REDIS_POOL_MAX: ${REDIS_POOL_MAX:-20}
+{{/if}}
+
+      # NATS connection (internal)
+{{#if this.features.messageQueue}}
+      NATS_URL: nats://nats:4222
+{{/if}}
+
+{{#if this.features.jwt}}
+      # JWT (from secrets)
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS512}
+{{/if}}
+
+    # Remove source code volume mount (use image)
+    volumes:
+{{#eq ../infrastructure.database.type "sqlite"}}
+      - {{this.name}}_prod_data:/app/data
+{{/eq}}
+      # Logs directory
+      - ./logs/{{this.name}}:/app/logs
+
+    # Remove port exposure (use reverse proxy)
+    ports: []
+
+    # Expose internal port
+    expose:
+      - "{{this.port}}"
+
+    # Resource limits
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+      update_config:
+        parallelism: 1
+        delay: 10s
+        failure_action: rollback
+        order: start-first
+
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:{{this.port}}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+        labels: "service={{this.name}}"
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
+    tmpfs:
+      - /tmp:noexec,nosuid,size=100m
+
+{{/each}}
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: {{project.name}}-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+{{#each services}}
+      - {{this.name}}
+{{/each}}
+    networks:
+      - {{project.name}}-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "10"
+
+networks:
+  {{project.name}}-network:
+    driver: bridge
+    name: {{project.name}}-prod-network
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+{{#if infrastructure.database}}
+{{#eq infrastructure.database.type "postgresql"}}
+  postgres_prod_data:
+    driver: local
+    name: {{project.name}}-postgres-prod-data
+{{/eq}}
+{{/if}}
+{{#if infrastructure.cache}}
+{{#eq infrastructure.cache.type "redis"}}
+  redis_prod_data:
+    driver: local
+    name: {{project.name}}-redis-prod-data
+{{/eq}}
+{{/if}}
+{{#if infrastructure.messageQueue}}
+{{#eq infrastructure.messageQueue.type "nats"}}
+  nats_prod_data:
+    driver: local
+    name: {{project.name}}-nats-prod-data
+{{/eq}}
+{{/if}}
+{{#each services}}
+{{#eq ../infrastructure.database.type "sqlite"}}
+  {{this.name}}_prod_data:
+    driver: local
+    name: {{../project.name}}-{{this.name}}-prod-data
+{{/eq}}
+{{/each}}

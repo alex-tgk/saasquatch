@@ -1,0 +1,93 @@
+import { FastifyRequest, FastifyReply } from 'fastify';
+import { ServiceClient } from '../utils/service-client.js';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    user: {
+      userId: string;
+      email: string;
+      tenantId: string;
+    };
+    tenantId: string;
+    correlationId: string;
+  }
+}
+
+// Singleton service client for auth-service
+const authServiceUrl = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
+const authServiceClient = new ServiceClient({
+  baseUrl: authServiceUrl,
+  timeout: 5000,
+  circuitBreakerOptions: {
+    failureThreshold: 3,
+    successThreshold: 2,
+    timeout: 30000 // 30 seconds
+  }
+});
+
+export async function authMiddleware(
+  request: FastifyRequest,
+  reply: FastifyReply
+) {
+  try {
+    const token = request.headers.authorization?.replace('Bearer ', '');
+
+    if (!token) {
+      return reply.code(401).send({ error: 'Authorization token required' });
+    }
+
+    // Generate correlation ID for request tracing
+    const correlationId = request.headers['x-correlation-id'] as string ||
+                          request.id ||
+                          Math.random().toString(36).substring(7);
+    request.correlationId = correlationId;
+
+    // Verify token with auth-service using circuit breaker
+    try {
+      const verifyResponse = await authServiceClient.post<{
+        valid: boolean;
+        userId: string;
+        email: string;
+        tenantId: string;
+      }>('/auth/verify', { token }, { correlationId });
+
+      if (!verifyResponse.valid) {
+        return reply.code(401).send({ error: 'Invalid or expired token' });
+      }
+
+      const { userId, email, tenantId } = verifyResponse;
+      request.user = { userId, email, tenantId };
+      request.tenantId = tenantId;
+
+      request.log.debug({
+        userId,
+        tenantId,
+        correlationId
+      }, 'Authentication successful');
+    } catch (error) {
+      // Circuit breaker open or service unavailable
+      if (error.message.includes('Circuit breaker is OPEN')) {
+        request.log.error({
+          error: error.message,
+          circuitStats: authServiceClient.getCircuitStats()
+        }, 'Auth service circuit breaker is open');
+        return reply.code(503).send({
+          error: 'Authentication service temporarily unavailable. Please try again later.'
+        });
+      }
+
+      request.log.error({ error: error.message, correlationId }, 'Auth service call failed');
+      return reply.code(401).send({ error: 'Authentication failed' });
+    }
+  } catch (error) {
+    request.log.error({ error }, 'Authentication middleware error');
+    return reply.code(500).send({ error: 'Internal authentication error' });
+  }
+}
+
+/**
+ * Get auth service client stats (for monitoring endpoints)
+ */
+export function getAuthServiceStats() {
+  return authServiceClient.getCircuitStats();
+}

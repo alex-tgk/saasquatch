@@ -1,0 +1,174 @@
+import { Knex } from 'knex';
+import { randomUUID } from 'crypto';
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  avatar_url: string | null;
+  metadata: Record<string, any>;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+}
+
+export interface CreateUserDto {
+  email: string;
+  name: string;
+  avatarUrl?: string;
+}
+
+export interface UpdateUserDto {
+  name?: string;
+  avatarUrl?: string;
+}
+
+/**
+ * UserRepository handles all database operations for the users table.
+ * Implements the repository pattern for clean separation of data access logic.
+ *
+ * All queries are tenant-scoped - the tenant schema should be set via
+ * the tenant middleware before calling these methods.
+ */
+export class UserRepository {
+  constructor(private db: Knex) {}
+
+  /**
+   * Create a new user
+   * @param userData User data to create
+   * @param tenantId Tenant identifier (used for logging)
+   * @returns Created user
+   */
+  async create(userData: CreateUserDto, tenantId: string): Promise<User> {
+    const now = new Date();
+
+    const [user] = await this.db('users')
+      .insert({
+        id: randomUUID(),
+        email: userData.email,
+        name: userData.name,
+        avatar_url: userData.avatarUrl || null,
+        metadata: {},
+        created_at: now,
+        updated_at: now,
+        deleted_at: null,
+      })
+      .returning('*');
+
+    return user;
+  }
+
+  /**
+   * Find all users (non-deleted) with pagination
+   * @param tenantId Tenant identifier
+   * @param limit Maximum number of results
+   * @param offset Number of results to skip
+   * @returns Array of users
+   */
+  async findAll(tenantId: string, limit: number = 10, offset: number = 0): Promise<User[]> {
+    return this.db('users')
+      .select('*')
+      .whereNull('deleted_at')
+      .orderBy('created_at', 'desc')
+      .limit(limit)
+      .offset(offset);
+  }
+
+  /**
+   * Count total non-deleted users
+   * @param tenantId Tenant identifier
+   * @returns Total count
+   */
+  async count(tenantId: string): Promise<number> {
+    const [{ count }] = await this.db('users')
+      .whereNull('deleted_at')
+      .count('* as count');
+
+    return parseInt(count as string, 10);
+  }
+
+  /**
+   * Find user by ID
+   * @param id User ID
+   * @param tenantId Tenant identifier
+   * @returns User or null if not found
+   */
+  async findById(id: string, tenantId: string): Promise<User | null> {
+    const user = await this.db('users')
+      .where({ id })
+      .whereNull('deleted_at')
+      .first();
+
+    return user || null;
+  }
+
+  /**
+   * Find user by email
+   * @param email User email
+   * @param tenantId Tenant identifier
+   * @returns User or null if not found
+   */
+  async findByEmail(email: string, tenantId: string): Promise<User | null> {
+    const user = await this.db('users')
+      .where({ email })
+      .whereNull('deleted_at')
+      .first();
+
+    return user || null;
+  }
+
+  /**
+   * Update user
+   * @param id User ID
+   * @param updates Fields to update
+   * @param tenantId Tenant identifier
+   * @returns Updated user
+   */
+  async update(id: string, updates: UpdateUserDto, tenantId: string): Promise<User> {
+    const updateData: any = {
+      updated_at: new Date(),
+    };
+
+    if (updates.name !== undefined) {
+      updateData.name = updates.name;
+    }
+    if (updates.avatarUrl !== undefined) {
+      updateData.avatar_url = updates.avatarUrl;
+    }
+
+    const [user] = await this.db('users')
+      .where({ id })
+      .whereNull('deleted_at')
+      .update(updateData)
+      .returning('*');
+
+    return user;
+  }
+
+  /**
+   * Soft delete user (sets deleted_at timestamp)
+   * @param id User ID
+   * @param tenantId Tenant identifier
+   */
+  async delete(id: string, tenantId: string): Promise<void> {
+    await this.db('users')
+      .where({ id })
+      .whereNull('deleted_at')
+      .update({
+        deleted_at: new Date(),
+        updated_at: new Date(),
+      });
+  }
+
+  /**
+   * Hard delete user (permanent removal from database)
+   * Only use this for testing or data cleanup operations
+   * @param id User ID
+   * @param tenantId Tenant identifier
+   */
+  async hardDelete(id: string, tenantId: string): Promise<void> {
+    await this.db('users')
+      .where({ id })
+      .delete();
+  }
+}

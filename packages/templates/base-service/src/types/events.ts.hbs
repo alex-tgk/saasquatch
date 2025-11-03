@@ -1,0 +1,112 @@
+/**
+ * Event type definitions and schemas for NATS messaging
+ */
+
+export interface BaseEvent {
+  id: string;              // Unique event ID (UUID)
+  type: string;            // Event type (e.g., 'user.created')
+  timestamp: string;       // ISO 8601 timestamp
+  tenantId: string;        // Tenant context
+  version: string;         // Schema version for evolution
+}
+
+export interface UserCreatedEvent extends BaseEvent {
+  type: 'user.created';
+  data: {
+    userId: string;
+    email: string;
+    name: string;
+    tenantId: string;
+  };
+}
+
+export interface UserUpdatedEvent extends BaseEvent {
+  type: 'user.updated';
+  data: {
+    userId: string;
+    updates: {
+      name?: string;
+      avatarUrl?: string;
+    };
+    tenantId: string;
+  };
+}
+
+export interface UserDeletedEvent extends BaseEvent {
+  type: 'user.deleted';
+  data: {
+    userId: string;
+    tenantId: string;
+  };
+}
+
+export interface TenantCreatedEvent extends BaseEvent {
+  type: 'tenant.created';
+  data: {
+    tenantId: string;
+    name: string;
+    email: string;
+  };
+}
+
+export interface TenantReadyEvent extends BaseEvent {
+  type: 'tenant.ready';
+  data: {
+    tenantId: string;
+    status: 'ready';
+  };
+}
+
+export type AppEvent =
+  | UserCreatedEvent
+  | UserUpdatedEvent
+  | UserDeletedEvent
+  | TenantCreatedEvent
+  | TenantReadyEvent;
+
+/**
+ * Event validation schemas
+ */
+export const EventSchemas = {
+  'user.created': {
+    type: 'object',
+    required: ['id', 'type', 'timestamp', 'tenantId', 'version', 'data'],
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      type: { type: 'string', const: 'user.created' },
+      timestamp: { type: 'string', format: 'date-time' },
+      tenantId: { type: 'string' },
+      version: { type: 'string' },
+      data: {
+        type: 'object',
+        required: ['userId', 'email', 'name', 'tenantId'],
+        properties: {
+          userId: { type: 'string', format: 'uuid' },
+          email: { type: 'string', format: 'email' },
+          name: { type: 'string' },
+          tenantId: { type: 'string' }
+        }
+      }
+    }
+  },
+  'tenant.created': {
+    type: 'object',
+    required: ['id', 'type', 'timestamp', 'tenantId', 'version', 'data'],
+    properties: {
+      id: { type: 'string', format: 'uuid' },
+      type: { type: 'string', const: 'tenant.created' },
+      timestamp: { type: 'string', format: 'date-time' },
+      tenantId: { type: 'string' },
+      version: { type: 'string' },
+      data: {
+        type: 'object',
+        required: ['tenantId', 'name', 'email'],
+        properties: {
+          tenantId: { type: 'string' },
+          name: { type: 'string' },
+          email: { type: 'string', format: 'email' }
+        }
+      }
+    }
+  }
+};

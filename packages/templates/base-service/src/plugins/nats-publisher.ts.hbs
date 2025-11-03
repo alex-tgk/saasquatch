@@ -1,0 +1,147 @@
+import fp from 'fastify-plugin';
+import { FastifyPluginAsync } from 'fastify';
+import { connect, NatsConnection, JSONCodec } from 'nats';
+import { randomUUID } from 'crypto';
+
+export interface BaseEvent {
+  id: string;
+  type: string;
+  timestamp: string;
+  tenantId: string;
+  version: string;
+}
+
+export interface UserCreatedEvent extends BaseEvent {
+  type: 'user.created';
+  data: {
+    userId: string;
+    email: string;
+    name: string;
+    tenantId: string;
+  };
+}
+
+export interface UserUpdatedEvent extends BaseEvent {
+  type: 'user.updated';
+  data: {
+    userId: string;
+    updates: Record<string, any>;
+    tenantId: string;
+  };
+}
+
+export interface UserDeletedEvent extends BaseEvent {
+  type: 'user.deleted';
+  data: {
+    userId: string;
+    tenantId: string;
+  };
+}
+
+export interface TenantCreatedEvent extends BaseEvent {
+  type: 'tenant.created';
+  data: {
+    tenantId: string;
+    name: string;
+    email: string;
+  };
+}
+
+export type AppEvent = UserCreatedEvent | UserUpdatedEvent | UserDeletedEvent | TenantCreatedEvent;
+
+declare module 'fastify' {
+  interface FastifyInstance {
+    nats: NatsConnection;
+    publishEvent: (event: AppEvent) => Promise<void>;
+    generateEventId: () => string;
+  }
+}
+
+const natsPublisherPlugin: FastifyPluginAsync = async (fastify) => {
+  const natsUrl = process.env.NATS_URL || 'nats://localhost:4222';
+
+  let nc: NatsConnection;
+
+  try {
+    nc = await connect({
+      servers: natsUrl,
+      name: '{{service.name}}-publisher',
+      maxReconnectAttempts: 10,
+      reconnectTimeWait: 1000,
+      timeout: 10000
+    });
+
+    fastify.log.info({ server: natsUrl }, 'Connected to NATS');
+
+    // Handle connection events
+    (async () => {
+      for await (const status of nc.status()) {
+        fastify.log.info({ status: status.type }, 'NATS connection status');
+      }
+    })();
+
+  } catch (error) {
+    fastify.log.error({ error, server: natsUrl }, 'Failed to connect to NATS');
+    throw error;
+  }
+
+  const codec = JSONCodec();
+
+  // Publish event with retry logic
+  const publishEvent = async (event: AppEvent, attempt = 1): Promise<void> => {
+    const maxAttempts = 3;
+    const subject = event.type.replace('.', '_'); // user.created -> user_created
+
+    try {
+      fastify.log.debug({ event, subject }, 'Publishing event');
+      nc.publish(subject, codec.encode(event));
+      fastify.log.info({
+        eventId: event.id,
+        type: event.type,
+        tenantId: event.tenantId
+      }, 'Event published successfully');
+    } catch (error) {
+      fastify.log.error({
+        error,
+        event,
+        attempt
+      }, 'Failed to publish event');
+
+      if (attempt < maxAttempts) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return publishEvent(event, attempt + 1);
+      } else {
+        // Send to dead-letter queue
+        try {
+          nc.publish('events_dlq', codec.encode({
+            ...event,
+            error: (error as Error).message,
+            attempts: maxAttempts,
+            dlqTimestamp: new Date().toISOString()
+          }));
+          fastify.log.warn({ eventId: event.id }, 'Event sent to DLQ');
+        } catch (dlqError) {
+          fastify.log.error({ dlqError, event }, 'Failed to send event to DLQ');
+        }
+        throw error;
+      }
+    }
+  };
+
+  const generateEventId = (): string => randomUUID();
+
+  fastify.decorate('nats', nc);
+  fastify.decorate('publishEvent', publishEvent);
+  fastify.decorate('generateEventId', generateEventId);
+
+  // Close connection on app shutdown
+  fastify.addHook('onClose', async () => {
+    await nc.drain();
+    fastify.log.info('NATS connection closed');
+  });
+};
+
+export default fp(natsPublisherPlugin, {
+  name: 'nats-publisher-plugin'
+});

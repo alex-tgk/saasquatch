@@ -1,0 +1,124 @@
+import { CircuitBreaker } from './circuit-breaker.js';
+import { randomUUID } from 'crypto';
+
+export interface ServiceClientOptions {
+  baseUrl: string;
+  timeout?: number;
+  circuitBreakerOptions?: {
+    failureThreshold?: number;
+    successThreshold?: number;
+    timeout?: number;
+  };
+}
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+  headers?: Record<string, string>;
+  body?: any;
+  correlationId?: string;
+}
+
+/**
+ * HTTP client for service-to-service communication with circuit breaker
+ */
+export class ServiceClient {
+  private readonly baseUrl: string;
+  private readonly timeout: number;
+  private readonly circuitBreaker: CircuitBreaker;
+
+  constructor(options: ServiceClientOptions) {
+    this.baseUrl = options.baseUrl.replace(/\/$/, ''); // Remove trailing slash
+    this.timeout = options.timeout ?? 10000;
+    this.circuitBreaker = new CircuitBreaker(options.circuitBreakerOptions);
+  }
+
+  /**
+   * Make HTTP request with circuit breaker protection
+   */
+  async request<T = any>(path: string, options: RequestOptions = {}): Promise<T> {
+    const url = `${this.baseUrl}${path}`;
+    const correlationId = options.correlationId ?? randomUUID();
+
+    return this.circuitBreaker.execute(async () => {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+          'X-Correlation-ID': correlationId,
+          ...options.headers
+        };
+
+        const response = await fetch(url, {
+          method: options.method ?? 'GET',
+          headers,
+          body: options.body ? JSON.stringify(options.body) : undefined,
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`HTTP ${response.status}: ${error}`);
+        }
+
+        const contentType = response.headers.get('content-type');
+        if (contentType?.includes('application/json')) {
+          return await response.json();
+        }
+
+        return await response.text() as any;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        if (error.name === 'AbortError') {
+          throw new Error(`Request timeout after ${this.timeout}ms`);
+        }
+        throw error;
+      }
+    });
+  }
+
+  /**
+   * GET request
+   */
+  async get<T = any>(path: string, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: 'GET' });
+  }
+
+  /**
+   * POST request
+   */
+  async post<T = any>(path: string, body: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: 'POST', body });
+  }
+
+  /**
+   * PUT request
+   */
+  async put<T = any>(path: string, body: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: 'PUT', body });
+  }
+
+  /**
+   * DELETE request
+   */
+  async delete<T = any>(path: string, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<T> {
+    return this.request<T>(path, { ...options, method: 'DELETE' });
+  }
+
+  /**
+   * Get circuit breaker statistics
+   */
+  getCircuitStats() {
+    return this.circuitBreaker.getStats();
+  }
+
+  /**
+   * Reset circuit breaker
+   */
+  resetCircuit() {
+    this.circuitBreaker.reset();
+  }
+}

@@ -1,16 +1,17 @@
-# Authentication Events
+# Event System Documentation
 
-This document describes the authentication events published by the {{service.name}} service to NATS JetStream.
+This document describes the event system used by {{service.name}} for asynchronous communication via NATS.
 
 ## Overview
 
-Authentication events enable distributed event-driven architecture by publishing key user authentication actions to NATS. Other services can subscribe to these events to:
+The event system enables distributed event-driven architecture by publishing domain events to NATS. Other services can subscribe to these events to:
 
-- Send welcome emails when users register
-- Track login activity and security alerts
-- Update user sessions across services
-- Maintain audit logs
-- Trigger business workflows
+- React to user lifecycle events (created, updated, deleted)
+- Handle tenant provisioning and setup
+- Send notifications and emails
+- Maintain audit logs and analytics
+- Trigger business workflows across services
+- Keep data synchronized across microservices
 
 ## Event Publishing
 
@@ -36,28 +37,65 @@ Events are published using a **fire-and-forget** pattern. This means:
 - **Storage**: File (persisted to disk)
 - **Discard Policy**: Old (discard oldest when full)
 
+## Event Architecture
+
+### Publisher Plugin
+
+The `nats-publisher` plugin provides:
+- Connection management with automatic reconnection
+- Event publishing with exponential backoff retry (max 3 attempts)
+- Dead-letter queue (DLQ) for failed events
+- Event ID generation (UUID v4)
+- Type-safe event interfaces
+
+### Subscriber Plugin
+
+The `nats-subscriber` plugin provides:
+- Queue group subscriptions for load balancing
+- Event handlers registry
+- Automatic message acknowledgment
+- Error handling with negative acknowledgment for retries
+- DLQ monitoring
+
+### Retry Logic
+
+Failed events are retried with exponential backoff:
+1. First attempt: immediate
+2. Second attempt: after 2 seconds
+3. Third attempt: after 4 seconds
+4. After 3 failures: event sent to DLQ
+
+### Dead-Letter Queue
+
+Events that fail after 3 retry attempts are sent to the `events_dlq` subject with:
+- Original event data
+- Error message
+- Number of attempts
+- DLQ timestamp
+
 ## Event Types
 
-### 1. User Registered
+### Core Events
 
-**Subject**: `auth.user.registered`
+### 1. User Created
 
-**Published When**: A new user successfully completes registration
+**Subject**: `user_created`
+
+**Published When**: A new user is successfully created in the system
 
 **Payload**:
 ```typescript
 {
-  subject: 'auth.user.registered',
+  id: string,            // Unique event ID (UUID)
+  type: 'user.created',
+  timestamp: string,     // ISO 8601 timestamp
+  tenantId: string,      // Tenant context
+  version: '1.0.0',
   data: {
-    userId: string,        // UUID of the newly registered user
-    email: string,         // User's email address
-    name: string,          // User's full name
-    timestamp: string      // ISO 8601 timestamp of registration
-  },
-  metadata: {
-    service: 'auth-service',
-    version: '1.0.0',
-    environment: 'production'
+    userId: string,      // UUID of the created user
+    email: string,       // User's email address
+    name: string,        // User's full name
+    tenantId: string     // Tenant ID
   }
 }
 ```
@@ -65,17 +103,16 @@ Events are published using a **fire-and-forget** pattern. This means:
 **Example**:
 ```json
 {
-  "subject": "auth.user.registered",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "type": "user.created",
+  "timestamp": "2024-01-01T12:00:00.000Z",
+  "tenantId": "acme-corp",
+  "version": "1.0.0",
   "data": {
     "userId": "123e4567-e89b-12d3-a456-426614174000",
     "email": "john.doe@example.com",
     "name": "John Doe",
-    "timestamp": "2024-01-01T12:00:00.000Z"
-  },
-  "metadata": {
-    "service": "auth-service",
-    "version": "1.0.0",
-    "environment": "production"
+    "tenantId": "acme-corp"
   }
 }
 ```
@@ -89,7 +126,124 @@ Events are published using a **fire-and-forget** pattern. This means:
 
 ---
 
-### 2. User Logged In
+### 2. User Updated
+
+**Subject**: `user_updated`
+
+**Published When**: A user's information is updated
+
+**Payload**:
+```typescript
+{
+  id: string,
+  type: 'user.updated',
+  timestamp: string,
+  tenantId: string,
+  version: '1.0.0',
+  data: {
+    userId: string,
+    updates: Record<string, any>,  // Changed fields
+    tenantId: string
+  }
+}
+```
+
+**Use Cases**:
+- Sync user data across services
+- Update caches
+- Audit trail
+- Trigger notifications if profile changes
+
+---
+
+### 3. User Deleted
+
+**Subject**: `user_deleted`
+
+**Published When**: A user is deleted from the system
+
+**Payload**:
+```typescript
+{
+  id: string,
+  type: 'user.deleted',
+  timestamp: string,
+  tenantId: string,
+  version: '1.0.0',
+  data: {
+    userId: string,
+    tenantId: string
+  }
+}
+```
+
+**Use Cases**:
+- Remove user data from other services
+- Clear caches
+- Compliance (GDPR right to deletion)
+- Audit logging
+
+---
+
+### 4. Tenant Created
+
+**Subject**: `tenant_created`
+
+**Published When**: A new tenant is created in the system
+
+**Payload**:
+```typescript
+{
+  id: string,
+  type: 'tenant.created',
+  timestamp: string,
+  tenantId: string,
+  version: '1.0.0',
+  data: {
+    tenantId: string,
+    name: string,
+    email: string
+  }
+}
+```
+
+**Use Cases**:
+- Create tenant-specific database schemas
+- Initialize tenant configuration
+- Send onboarding emails
+- Setup tenant resources
+
+---
+
+### 5. Tenant Ready
+
+**Subject**: `tenant_ready`
+
+**Published When**: A tenant's infrastructure is fully provisioned and ready
+
+**Payload**:
+```typescript
+{
+  id: string,
+  type: 'tenant.ready',
+  timestamp: string,
+  tenantId: string,
+  version: '1.0.0',
+  data: {
+    tenantId: string,
+    status: 'ready'
+  }
+}
+```
+
+**Use Cases**:
+- Enable tenant access
+- Notify administrators
+- Trigger post-provisioning workflows
+
+---
+
+### 2. User Logged In (Authentication Events)
 
 **Subject**: `auth.user.logged_in`
 
@@ -234,72 +388,74 @@ Events are published using a **fire-and-forget** pattern. This means:
 
 ---
 
+## Publishing Events
+
+### From Within a Service
+
+```typescript
+// Publishing events is simple with the nats-publisher plugin
+await fastify.publishEvent({
+  id: fastify.generateEventId(),
+  type: 'user.created',
+  timestamp: new Date().toISOString(),
+  tenantId: 'acme-corp',
+  version: '1.0.0',
+  data: {
+    userId: user.id,
+    email: user.email,
+    name: user.name,
+    tenantId: 'acme-corp'
+  }
+});
+```
+
+### Event Publishing Features
+
+- **Automatic Retry**: Failed publishes are retried with exponential backoff
+- **Dead-Letter Queue**: Events that fail after 3 retries go to DLQ
+- **Type Safety**: TypeScript interfaces ensure correct event structure
+- **Logging**: All publish attempts and results are logged
+
 ## Subscribing to Events
 
 ### Using NATS CLI
 
 ```bash
-# Subscribe to all auth events
-nats sub "auth.user.*"
+# Subscribe to all events
+nats sub "user_*"
+nats sub "tenant_*"
 
 # Subscribe to specific event
-nats sub "auth.user.registered"
+nats sub "user_created"
+nats sub "tenant_created"
+
+# Monitor dead-letter queue
+nats sub "events_dlq"
 ```
 
-### Using Node.js (NATS Client)
+### Creating Event Handlers
+
+Event handlers are registered in the `nats-subscriber` plugin:
 
 ```typescript
-import { connect, StringCodec } from 'nats';
+// Add handler in nats-subscriber.ts
+handlers.set('user_created', async (event, fastify) => {
+  if (event.type !== 'user.created') return;
 
-const nc = await connect({ servers: 'nats://localhost:4222' });
-const sc = StringCodec();
+  // Process the event
+  fastify.log.info({ userId: event.data.userId }, 'Processing user created');
 
-// Subscribe to all auth events
-const sub = nc.subscribe('auth.user.*');
-
-for await (const msg of sub) {
-  const event = JSON.parse(sc.decode(msg.data));
-  console.log('Received event:', event.subject);
-  console.log('Payload:', event.data);
-
-  // Process event based on type
-  switch (event.subject) {
-    case 'auth.user.registered':
-      // Send welcome email
-      break;
-    case 'auth.user.logged_in':
-      // Track login activity
-      break;
-    // ... handle other events
-  }
-}
+  // Your business logic here
+  await sendWelcomeEmail(event.data.email);
+});
 ```
 
-### Using JetStream Consumer
+### Subscriber Features
 
-```typescript
-import { connect, StringCodec } from 'nats';
-
-const nc = await connect({ servers: 'nats://localhost:4222' });
-const js = nc.jetstream();
-
-// Create durable consumer
-const consumer = await js.consumers.get('auth-events', 'my-service-consumer');
-
-// Process messages
-const messages = await consumer.consume();
-
-for await (const msg of messages) {
-  const sc = StringCodec();
-  const event = JSON.parse(sc.decode(msg.data));
-
-  // Process event
-  console.log('Processing:', event.subject);
-
-  // Acknowledge message
-  msg.ack();
-}
-```
+- **Queue Groups**: Multiple instances share load automatically
+- **Acknowledgment**: Messages are acked after successful processing
+- **Error Handling**: Failed messages are negatively acknowledged for retry
+- **DLQ Monitoring**: Failed events are logged from the dead-letter queue
 
 ## Error Handling
 

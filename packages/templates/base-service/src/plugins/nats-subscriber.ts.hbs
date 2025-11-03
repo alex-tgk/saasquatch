@@ -1,0 +1,131 @@
+import fp from 'fastify-plugin';
+import { FastifyPluginAsync } from 'fastify';
+import { JSONCodec } from 'nats';
+import { AppEvent } from './nats-publisher.js';
+import { TenantService } from '../services/tenant.service.js';
+
+type EventHandler = (event: AppEvent, fastify: any) => Promise<void>;
+
+const natsSubscriberPlugin: FastifyPluginAsync = async (fastify) => {
+  const codec = JSONCodec<AppEvent>();
+
+  // Event handlers registry
+  const handlers: Map<string, EventHandler> = new Map();
+
+  // Register tenant.created handler
+  handlers.set('tenant_created', async (event, fastify) => {
+    if (event.type !== 'tenant.created') return;
+
+    fastify.log.info({ event }, 'Handling tenant.created event');
+
+    const tenantService = new TenantService(fastify.db);
+    const { tenantId, name } = event.data;
+
+    try {
+      // Check if tenant already exists
+      const exists = await tenantService.tenantExists(tenantId);
+      if (exists) {
+        fastify.log.info({ tenantId }, 'Tenant schema already exists');
+        return;
+      }
+
+      // Create tenant schema
+      await tenantService.createTenantSchema(tenantId);
+
+      // Publish tenant.ready event
+      await fastify.publishEvent({
+        id: fastify.generateEventId(),
+        type: 'tenant.ready',
+        timestamp: new Date().toISOString(),
+        tenantId,
+        version: '1.0.0',
+        data: {
+          tenantId,
+          status: 'ready'
+        }
+      } as any);
+
+      fastify.log.info({ tenantId }, 'Tenant created and ready');
+    } catch (error) {
+      fastify.log.error({ error, tenantId }, 'Failed to create tenant');
+      throw error;
+    }
+  });
+
+  // Register user event handlers (logging only, can be extended)
+  handlers.set('user_created', async (event, fastify) => {
+    if (event.type !== 'user.created') return;
+    fastify.log.info({
+      userId: event.data.userId,
+      email: event.data.email,
+      tenantId: event.tenantId
+    }, 'User created event received');
+  });
+
+  handlers.set('user_updated', async (event, fastify) => {
+    if (event.type !== 'user.updated') return;
+    fastify.log.info({
+      userId: event.data.userId,
+      tenantId: event.tenantId
+    }, 'User updated event received');
+  });
+
+  handlers.set('user_deleted', async (event, fastify) => {
+    if (event.type !== 'user.deleted') return;
+    fastify.log.info({
+      userId: event.data.userId,
+      tenantId: event.tenantId
+    }, 'User deleted event received');
+  });
+
+  // Subscribe to all registered events
+  for (const [subject, handler] of handlers.entries()) {
+    const subscription = fastify.nats.subscribe(subject, {
+      queue: '{{service.name}}-workers' // Queue group for load balancing
+    });
+
+    fastify.log.info({ subject }, 'Subscribed to NATS subject');
+
+    // Process messages
+    (async () => {
+      for await (const msg of subscription) {
+        try {
+          const event = codec.decode(msg.data);
+          fastify.log.debug({ event, subject }, 'Received event');
+
+          await handler(event, fastify);
+
+          // Acknowledge message if using JetStream
+          msg.ack?.();
+        } catch (error) {
+          fastify.log.error({
+            error,
+            subject,
+            data: msg.data
+          }, 'Error processing event');
+
+          // Negative acknowledge for retry if using JetStream
+          msg.nak?.();
+        }
+      }
+    })().catch(err => {
+      fastify.log.error({ error: err, subject }, 'Subscription error');
+    });
+  }
+
+  // Subscribe to DLQ for monitoring
+  const dlqSub = fastify.nats.subscribe('events_dlq');
+  (async () => {
+    for await (const msg of dlqSub) {
+      const event = codec.decode(msg.data);
+      fastify.log.error({ event }, 'Event in dead-letter queue');
+    }
+  })().catch(err => {
+    fastify.log.error({ error: err }, 'DLQ subscription error');
+  });
+};
+
+export default fp(natsSubscriberPlugin, {
+  name: 'nats-subscriber-plugin',
+  dependencies: ['nats-publisher-plugin', 'database-plugin']
+});

@@ -12,9 +12,11 @@ import { swaggerOptions, swaggerUiOptions } from './config/swagger.config.js';
 {{/if}}{{#if service.features.jwt}}import { authRoutes } from './routes/auth.js';
 {{/if}}{{#if service.features.database}}import { databasePlugin } from './plugins/database.js';
 {{/if}}{{#if service.features.cache}}import { redisPlugin } from './plugins/redis.js';
-{{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
+{{/if}}{{#if service.features.messageQueue}}import natsPublisherPlugin from './plugins/nats-publisher.js';
+import natsSubscriberPlugin from './plugins/nats-subscriber.js';
 {{/if}}{{#if service.features.jwt}}import { authPlugin } from './plugins/auth.js';
 import { rateLimitPlugin } from './plugins/rate-limit.js';
+{{/if}}{{#if infrastructure.database.multiTenancy.enabled}}import tenantPlugin from './plugins/tenant.js';
 {{/if}}
 
 export async function buildApp(opts = {}) {
@@ -59,9 +61,15 @@ export async function buildApp(opts = {}) {
 
   {{#if service.features.database}}await app.register(databasePlugin);
   {{/if}}{{#if (or service.features.cache service.features.jwt)}}await app.register(redisPlugin);
-  {{/if}}{{#if service.features.messageQueue}}await app.register(natsPlugin);
+  {{/if}}{{#if service.features.messageQueue}}// Register NATS publisher plugin (provides publishEvent and generateEventId)
+  await app.register(natsPublisherPlugin);
+  // Register NATS subscriber plugin (handles incoming events)
+  await app.register(natsSubscriberPlugin);
   {{/if}}{{#if service.features.jwt}}await app.register(rateLimitPlugin);
   await app.register(authPlugin);
+
+  {{/if}}{{#if infrastructure.database.multiTenancy.enabled}}// Register tenant plugin for multi-tenancy support
+  await app.register(tenantPlugin);
 
   {{/if}}// Register routes
   {{#if service.features.healthChecks}}await app.register(healthRoutes);

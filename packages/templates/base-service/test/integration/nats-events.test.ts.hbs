@@ -1,0 +1,240 @@
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { connect, NatsConnection, JSONCodec } from 'nats';
+import { buildApp } from '../../src/app.js';
+import { FastifyInstance } from 'fastify';
+import Knex from 'knex';
+
+describe('NATS Event System', () => {
+  let app: FastifyInstance;
+  let natsClient: NatsConnection;
+  let db: Knex.Knex;
+  const codec = JSONCodec();
+  const testTenantId = 'test-tenant-nats';
+
+  beforeAll(async () => {
+    // Connect to NATS
+    natsClient = await connect({
+      servers: process.env.NATS_URL || 'nats://localhost:4222'
+    });
+
+    // Setup database
+    db = Knex({
+      client: '{{#if (eq infrastructure.database.type "postgresql")}}pg{{else}}better-sqlite3{{/if}}',
+      connection: {{#if (eq infrastructure.database.type "postgresql")}}{
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'postgres',
+        database: process.env.DB_NAME || 'test_db'
+      }{{else}}process.env.DATABASE_URL || ':memory:'{{/if}}
+    });
+
+    // Build app
+    app = await buildApp();
+    await app.ready();
+
+    // Wait for NATS subscriptions to be ready
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  });
+
+  afterAll(async () => {
+    {{#if (eq infrastructure.database.type "postgresql")}}
+    await db.raw(`DROP SCHEMA IF EXISTS tenant_${testTenantId} CASCADE`);
+    {{/if}}
+    await natsClient.drain();
+    await db.destroy();
+    await app.close();
+  });
+
+  describe('Event Publishing', () => {
+    it('should publish user.created event', async () => {
+      const eventPromise = new Promise((resolve) => {
+        const sub = natsClient.subscribe('user_created');
+        (async () => {
+          for await (const msg of sub) {
+            const event = codec.decode(msg.data);
+            resolve(event);
+            sub.unsubscribe();
+          }
+        })();
+      });
+
+      // Trigger event
+      await app.publishEvent({
+        id: app.generateEventId(),
+        type: 'user.created',
+        timestamp: new Date().toISOString(),
+        tenantId: testTenantId,
+        version: '1.0.0',
+        data: {
+          userId: 'test-user-123',
+          email: 'test@example.com',
+          name: 'Test User',
+          tenantId: testTenantId
+        }
+      });
+
+      const receivedEvent: any = await eventPromise;
+      expect(receivedEvent.type).toBe('user.created');
+      expect(receivedEvent.data.email).toBe('test@example.com');
+    });
+
+    it('should publish user.updated event', async () => {
+      const eventPromise = new Promise((resolve) => {
+        const sub = natsClient.subscribe('user_updated');
+        (async () => {
+          for await (const msg of sub) {
+            const event = codec.decode(msg.data);
+            resolve(event);
+            sub.unsubscribe();
+          }
+        })();
+      });
+
+      await app.publishEvent({
+        id: app.generateEventId(),
+        type: 'user.updated',
+        timestamp: new Date().toISOString(),
+        tenantId: testTenantId,
+        version: '1.0.0',
+        data: {
+          userId: 'test-user-123',
+          updates: { name: 'Updated Name' },
+          tenantId: testTenantId
+        }
+      });
+
+      const receivedEvent: any = await eventPromise;
+      expect(receivedEvent.type).toBe('user.updated');
+      expect(receivedEvent.data.updates.name).toBe('Updated Name');
+    });
+
+    it('should publish user.deleted event', async () => {
+      const eventPromise = new Promise((resolve) => {
+        const sub = natsClient.subscribe('user_deleted');
+        (async () => {
+          for await (const msg of sub) {
+            const event = codec.decode(msg.data);
+            resolve(event);
+            sub.unsubscribe();
+          }
+        })();
+      });
+
+      await app.publishEvent({
+        id: app.generateEventId(),
+        type: 'user.deleted',
+        timestamp: new Date().toISOString(),
+        tenantId: testTenantId,
+        version: '1.0.0',
+        data: {
+          userId: 'test-user-123',
+          tenantId: testTenantId
+        }
+      });
+
+      const receivedEvent: any = await eventPromise;
+      expect(receivedEvent.type).toBe('user.deleted');
+      expect(receivedEvent.data.userId).toBe('test-user-123');
+    });
+  });
+
+  {{#if (eq infrastructure.database.type "postgresql")}}
+  describe('Tenant Creation Flow', () => {
+    it('should create tenant schema when tenant.created event received', async () => {
+      const readyEventPromise = new Promise((resolve) => {
+        const sub = natsClient.subscribe('tenant_ready');
+        (async () => {
+          for await (const msg of sub) {
+            const event = codec.decode(msg.data);
+            if ((event as any).data.tenantId === testTenantId) {
+              resolve(event);
+              sub.unsubscribe();
+            }
+          }
+        })();
+      });
+
+      // Publish tenant.created event
+      natsClient.publish('tenant_created', codec.encode({
+        id: app.generateEventId(),
+        type: 'tenant.created',
+        timestamp: new Date().toISOString(),
+        tenantId: testTenantId,
+        version: '1.0.0',
+        data: {
+          tenantId: testTenantId,
+          name: 'Test Tenant',
+          email: 'tenant@example.com'
+        }
+      }));
+
+      // Wait for tenant.ready event
+      const readyEvent: any = await readyEventPromise;
+      expect(readyEvent.type).toBe('tenant.ready');
+      expect(readyEvent.data.status).toBe('ready');
+
+      // Verify tenant schema was created
+      const result = await db.raw(`
+        SELECT schema_name
+        FROM information_schema.schemata
+        WHERE schema_name = ?
+      `, [`tenant_${testTenantId}`]);
+
+      expect(result.rows.length).toBe(1);
+    });
+  });
+  {{/if}}
+
+  describe('Event Retry and DLQ', () => {
+    it('should send failed events to DLQ after retries', async () => {
+      // Mock NATS publish to fail
+      const originalPublish = app.nats.publish;
+      let attempts = 0;
+      app.nats.publish = ((...args: any[]) => {
+        attempts++;
+        if (attempts < 4) {
+          throw new Error('Simulated failure');
+        }
+        return originalPublish.apply(app.nats, args);
+      }) as any;
+
+      const dlqPromise = new Promise((resolve) => {
+        const sub = natsClient.subscribe('events_dlq');
+        (async () => {
+          for await (const msg of sub) {
+            const event = codec.decode(msg.data);
+            resolve(event);
+            sub.unsubscribe();
+          }
+        })();
+      });
+
+      try {
+        await app.publishEvent({
+          id: app.generateEventId(),
+          type: 'user.created',
+          timestamp: new Date().toISOString(),
+          tenantId: testTenantId,
+          version: '1.0.0',
+          data: {
+            userId: 'test-user-dlq',
+            email: 'dlq@example.com',
+            name: 'DLQ User',
+            tenantId: testTenantId
+          }
+        });
+      } catch (error) {
+        // Expected to fail
+      }
+
+      const dlqEvent: any = await dlqPromise;
+      expect(dlqEvent.type).toBe('user.created');
+      expect(dlqEvent.error).toBeDefined();
+      expect(dlqEvent.attempts).toBe(3);
+
+      // Restore original publish
+      app.nats.publish = originalPublish;
+    });
+  });
+});

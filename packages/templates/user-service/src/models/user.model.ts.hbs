@@ -1,0 +1,165 @@
+/**
+ * JSON Schema definitions for user-related requests and responses.
+ * Fastify uses JSON Schema natively for validation and documentation.
+ */
+
+export const CreateUserSchema = {
+  type: 'object',
+  required: ['email', 'name'],
+  properties: {
+    email: {
+      type: 'string',
+      format: 'email',
+      description: 'User email address',
+      example: 'user@example.com',
+    },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 255,
+      description: 'User full name',
+      example: 'John Doe',
+    },
+    avatarUrl: {
+      type: 'string',
+      format: 'uri',
+      description: 'URL to user avatar image',
+      example: 'https://example.com/avatar.jpg',
+    },
+  },
+} as const;
+
+export const UpdateUserSchema = {
+  type: 'object',
+  properties: {
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: 255,
+      description: 'User full name',
+      example: 'Jane Doe',
+    },
+    avatarUrl: {
+      type: 'string',
+      format: 'uri',
+      nullable: true,
+      description: 'URL to user avatar image',
+      example: 'https://example.com/new-avatar.jpg',
+    },
+  },
+} as const;
+
+export const UserResponseSchema = {
+  type: 'object',
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      description: 'User unique identifier',
+      example: '550e8400-e29b-41d4-a716-446655440000',
+    },
+    email: {
+      type: 'string',
+      format: 'email',
+      description: 'User email address',
+      example: 'user@example.com',
+    },
+    name: {
+      type: 'string',
+      description: 'User full name',
+      example: 'John Doe',
+    },
+    avatarUrl: {
+      type: 'string',
+      format: 'uri',
+      nullable: true,
+      description: 'Avatar URL',
+      example: 'https://example.com/avatar.jpg',
+    },
+    createdAt: {
+      type: 'string',
+      format: 'date-time',
+      description: 'Creation timestamp',
+      example: '2024-01-01T00:00:00.000Z',
+    },
+    updatedAt: {
+      type: 'string',
+      format: 'date-time',
+      description: 'Last update timestamp',
+      example: '2024-01-01T00:00:00.000Z',
+    },
+  },
+} as const;
+
+export const UserListResponseSchema = {
+  type: 'object',
+  properties: {
+    data: {
+      type: 'array',
+      items: UserResponseSchema,
+      description: 'Array of users',
+    },
+    pagination: {
+      type: 'object',
+      properties: {
+        limit: {
+          type: 'integer',
+          description: 'Maximum number of results',
+          example: 10,
+        },
+        offset: {
+          type: 'integer',
+          description: 'Number of results skipped',
+          example: 0,
+        },
+        total: {
+          type: 'integer',
+          description: 'Total number of users',
+          example: 100,
+        },
+      },
+    },
+  },
+} as const;
+
+export const ErrorResponseSchema = {
+  type: 'object',
+  properties: {
+    error: {
+      type: 'string',
+      description: 'Error message',
+      example: 'User not found',
+    },
+  },
+} as const;
+
+export const UserIdParamSchema = {
+  type: 'object',
+  required: ['id'],
+  properties: {
+    id: {
+      type: 'string',
+      format: 'uuid',
+      description: 'User ID',
+    },
+  },
+} as const;
+
+export const PaginationQuerySchema = {
+  type: 'object',
+  properties: {
+    limit: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 100,
+      default: 10,
+      description: 'Maximum number of results to return',
+    },
+    offset: {
+      type: 'integer',
+      minimum: 0,
+      default: 0,
+      description: 'Number of results to skip',
+    },
+  },
+} as const;

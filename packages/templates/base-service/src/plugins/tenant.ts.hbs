@@ -1,0 +1,67 @@
+import fp from 'fastify-plugin';
+import { FastifyPluginAsync } from 'fastify';
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    tenantId: string;
+  }
+}
+
+const tenantPlugin: FastifyPluginAsync = async (fastify) => {
+  // Tenant middleware - sets search_path based on JWT tenantId
+  fastify.addHook('onRequest', async (request, reply) => {
+    // Skip for health checks and public endpoints
+    const publicPaths = ['/health', '/ready', '/metrics', '/docs', '/', '/discovery'];
+    if (publicPaths.includes(request.url) || request.url.startsWith('/docs')) {
+      return;
+    }
+
+    // Skip for auth endpoints that don't require tenant context
+    if (request.url.startsWith('/auth')) {
+      return;
+    }
+
+    // Extract tenantId from JWT (already decoded by auth middleware)
+    const tenantId = request.user?.tenantId;
+
+    if (!tenantId) {
+      fastify.log.warn({ url: request.url }, 'No tenantId in request context');
+      return reply.code(400).send({
+        error: 'Tenant context required',
+        message: 'This endpoint requires a valid tenant context'
+      });
+    }
+
+    request.tenantId = tenantId;
+
+    // Set PostgreSQL search_path to tenant schema
+    {{#if (eq infrastructure.database.type "postgresql")}}
+    try {
+      await fastify.db.raw(`SET search_path TO tenant_${tenantId}, public`);
+      fastify.log.debug({ tenantId, url: request.url }, 'Set tenant search_path');
+    } catch (error) {
+      fastify.log.error({ error, tenantId }, 'Failed to set tenant search_path');
+      return reply.code(500).send({
+        error: 'Tenant initialization failed',
+        message: 'Could not set tenant context'
+      });
+    }
+    {{/if}}
+  });
+
+  // Hook to log tenant context for debugging
+  fastify.addHook('onResponse', async (request, reply) => {
+    if (request.tenantId) {
+      fastify.log.debug({
+        tenantId: request.tenantId,
+        url: request.url,
+        statusCode: reply.statusCode
+      }, 'Request completed with tenant context');
+    }
+  });
+};
+
+export default fp(tenantPlugin, {
+  name: 'tenant-plugin',
+  dependencies: ['database-plugin']
+});

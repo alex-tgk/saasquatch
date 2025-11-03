@@ -8,20 +8,20 @@ services:
     container_name: {{project.name}}-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-{{project.name}}}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: {{project.name}}
       POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
-      TZ: ${TZ:-UTC}
+      TZ: UTC
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "$\{POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-scripts:/docker-entrypoint-initdb.d:ro
     networks:
       - {{project.name}}-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-{{project.name}}}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d {{project.name}}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -54,7 +54,7 @@ services:
       --save 300 10
       --save 60 10000
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "$\{REDIS_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -86,8 +86,8 @@ services:
       --max_payload 1MB
       --http_port 8222
     ports:
-      - "${NATS_PORT:-4222}:4222"      # Client connections
-      - "${NATS_HTTP_PORT:-8222}:8222" # HTTP monitoring
+      - "$\{NATS_PORT:-4222}:4222"      # Client connections
+      - "$\{NATS_HTTP_PORT:-8222}:8222" # HTTP monitoring
     volumes:
       - nats_data:/data
     networks:
@@ -114,18 +114,18 @@ services:
     container_name: {{../project.name}}-{{this.name}}
     restart: unless-stopped
     environment:
-      NODE_ENV: ${NODE_ENV:-development}
+      NODE_ENV: $\{NODE_ENV:-development}
       PORT: {{this.port}}
       SERVICE_NAME: {{this.name}}
-      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_LEVEL: $\{LOG_LEVEL:-info}
 {{#if this.features.database}}
 {{#eq ../infrastructure.database.type "postgresql"}}
-      DATABASE_URL: postgres://$${POSTGRES_USER:-postgres}:$${POSTGRES_PASSWORD:-postgres}@postgres:5432/$${POSTGRES_DB:-{{../project.name}}}
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/{{../project.name}}
       DATABASE_HOST: postgres
       DATABASE_PORT: 5432
-      DATABASE_USER: ${POSTGRES_USER:-postgres}
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      DATABASE_NAME: ${POSTGRES_DB:-{{../project.name}}}
+      DATABASE_USER: postgres
+      DATABASE_PASSWORD: postgres
+      DATABASE_NAME: {{../project.name}}
 {{/eq}}
 {{#eq ../infrastructure.database.type "sqlite"}}
       DATABASE_URL: file:./data/{{this.name}}.db
@@ -142,9 +142,9 @@ services:
       NATS_PORT: 4222
 {{/if}}
 {{#if this.features.jwt}}
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
-      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      JWT_SECRET: $\{JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      JWT_EXPIRES_IN: $\{JWT_EXPIRES_IN:-1h}
+      JWT_REFRESH_EXPIRES_IN: $\{JWT_REFRESH_EXPIRES_IN:-7d}
 {{/if}}
     ports:
       - "{{this.port}}:{{this.port}}"

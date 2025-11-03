@@ -11,7 +11,8 @@ import swaggerUi from '@fastify/swagger-ui';
 {{/if}}{{#if service.features.messageQueue}}import { natsPlugin } from './plugins/nats.js';
 import { initializeUserEventsStream } from './events/user.events.js';
 {{/if}}{{#if (or service.features.authentication service.features.jwt)}}import { authPlugin } from './plugins/auth.js';
-{{/if}}import { userRoutes } from './routes/user.routes.js';
+{{/if}}import { authMiddleware } from './middleware/auth.middleware.js';
+import { userRoutes } from './routes/users.js';
 {{#if infrastructure.database.multiTenancy}}import { TenantService } from './services/tenant.service.js';
 import { createTenantMiddleware } from './middleware/tenant.middleware.js';
 {{/if}}
@@ -88,7 +89,10 @@ export async function buildApp(opts = {}) {
   await initializeUserEventsStream(app);
   {{/if}}{{#if (or service.features.authentication service.features.jwt)}}await app.register(authPlugin);
 
-  {{/if}}{{#if infrastructure.database.multiTenancy}}// Initialize Tenant Service and Middleware
+  {{/if}}// Register authentication decorator
+  app.decorate('authenticate', authMiddleware);
+
+  {{#if infrastructure.database.multiTenancy}}// Initialize Tenant Service and Middleware
   const tenantService = new TenantService(app.db);
   const tenantMiddleware = createTenantMiddleware(tenantService);
 

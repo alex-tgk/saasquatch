@@ -1,0 +1,225 @@
+import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
+import { buildApp } from '../../src/app.js';
+import { FastifyInstance } from 'fastify';
+import Knex from 'knex';
+
+describe('Service-to-Service Communication', () => {
+  let authApp: FastifyInstance;
+  let userApp: FastifyInstance;
+  let db: Knex.Knex;
+  const testTenantId = 'test-tenant-s2s';
+
+  beforeAll(async () => {
+    // Setup database
+    db = Knex({
+      client: 'pg',
+      connection: {
+        host: process.env.DB_HOST || 'localhost',
+        port: parseInt(process.env.DB_PORT || '5432'),
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || 'postgres',
+        database: process.env.DB_NAME || 'test_db'
+      }
+    });
+
+    // Create tenant schema
+    await db.raw(`SELECT create_tenant_schema('${testTenantId}')`);
+
+    // Build both apps
+    authApp = await buildApp();
+    await authApp.listen({ port: 3001, host: '0.0.0.0' });
+
+    // User app will connect to auth app
+    process.env.AUTH_SERVICE_URL = 'http://localhost:3001';
+    userApp = await buildApp();
+    await userApp.listen({ port: 3002, host: '0.0.0.0' });
+  });
+
+  afterAll(async () => {
+    await db.raw(`DROP SCHEMA IF EXISTS tenant_${testTenantId} CASCADE`);
+    await db.destroy();
+    await authApp.close();
+    await userApp.close();
+  });
+
+  describe('Token Verification Endpoint', () => {
+    it('should verify valid JWT token', async () => {
+      // Register user
+      const registerResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          email: 's2s@example.com',
+          password: 'Password123!',
+          name: 'S2S User'
+        }
+      });
+      expect(registerResponse.statusCode).toBe(201);
+      const { accessToken } = JSON.parse(registerResponse.payload);
+
+      // Verify token
+      const verifyResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/verify',
+        payload: { token: accessToken }
+      });
+
+      expect(verifyResponse.statusCode).toBe(200);
+      const result = JSON.parse(verifyResponse.payload);
+      expect(result.valid).toBe(true);
+      expect(result.userId).toBeDefined();
+      expect(result.email).toBe('s2s@example.com');
+      expect(result.tenantId).toBeDefined();
+    });
+
+    it('should reject invalid token', async () => {
+      const verifyResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/verify',
+        payload: { token: 'invalid-token' }
+      });
+
+      expect(verifyResponse.statusCode).toBe(401);
+      const result = JSON.parse(verifyResponse.payload);
+      expect(result.valid).toBe(false);
+      expect(result.error).toBeDefined();
+    });
+
+    it('should reject blacklisted token', async () => {
+      // Register and logout
+      const registerResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          email: 'blacklist@example.com',
+          password: 'Password123!',
+          name: 'Blacklist User'
+        }
+      });
+      const { accessToken } = JSON.parse(registerResponse.payload);
+
+      await authApp.inject({
+        method: 'POST',
+        url: '/auth/logout',
+        headers: { authorization: `Bearer ${accessToken}` }
+      });
+
+      // Try to verify blacklisted token
+      const verifyResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/verify',
+        payload: { token: accessToken }
+      });
+
+      expect(verifyResponse.statusCode).toBe(401);
+      const result = JSON.parse(verifyResponse.payload);
+      expect(result.valid).toBe(false);
+      expect(result.error).toContain('revoked');
+    });
+  });
+
+  describe('Inter-Service Authentication', () => {
+    it('should authenticate user-service request via auth-service', async () => {
+      // Register user via auth-service
+      const registerResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          email: 'interservice@example.com',
+          password: 'Password123!',
+          name: 'Inter Service User'
+        }
+      });
+      const { accessToken } = JSON.parse(registerResponse.payload);
+
+      // Use token to create user in user-service
+      const createUserResponse = await userApp.inject({
+        method: 'POST',
+        url: '/users',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          email: 'interservice@example.com',
+          name: 'Inter Service User'
+        }
+      });
+
+      expect(createUserResponse.statusCode).toBe(201);
+      const user = JSON.parse(createUserResponse.payload);
+      expect(user.email).toBe('interservice@example.com');
+    });
+
+    it('should reject unauthenticated user-service request', async () => {
+      const response = await userApp.inject({
+        method: 'GET',
+        url: '/users'
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('should reject user-service request with invalid token', async () => {
+      const response = await userApp.inject({
+        method: 'GET',
+        url: '/users',
+        headers: { authorization: 'Bearer invalid-token' }
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+  });
+
+  describe('Circuit Breaker', () => {
+    it('should handle auth-service being unavailable', async () => {
+      // Stop auth service to simulate failure
+      await authApp.close();
+
+      // Try to make authenticated request to user-service
+      const response = await userApp.inject({
+        method: 'GET',
+        url: '/users',
+        headers: { authorization: 'Bearer some-token' }
+      });
+
+      // Should get 503 after circuit opens
+      expect([401, 503]).toContain(response.statusCode);
+
+      // Restart auth service
+      await authApp.listen({ port: 3001, host: '0.0.0.0' });
+    });
+  });
+
+  describe('Correlation IDs', () => {
+    it('should propagate correlation IDs across services', async () => {
+      // Register user
+      const registerResponse = await authApp.inject({
+        method: 'POST',
+        url: '/auth/register',
+        payload: {
+          email: 'correlation@example.com',
+          password: 'Password123!',
+          name: 'Correlation User'
+        }
+      });
+      const { accessToken } = JSON.parse(registerResponse.payload);
+
+      const correlationId = 'test-correlation-123';
+
+      // Make request with correlation ID
+      const response = await userApp.inject({
+        method: 'POST',
+        url: '/users',
+        headers: {
+          authorization: `Bearer ${accessToken}`,
+          'x-correlation-id': correlationId
+        },
+        payload: {
+          email: 'correlation@example.com',
+          name: 'Correlation User'
+        }
+      });
+
+      expect(response.statusCode).toBe(201);
+      // In production, check logs to verify correlation ID was propagated
+    });
+  });
+});

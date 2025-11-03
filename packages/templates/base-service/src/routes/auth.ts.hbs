@@ -718,6 +718,77 @@ export const authRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // POST /auth/verify - Token verification endpoint for service-to-service communication
+  fastify.post('/auth/verify', {
+    schema: {
+      description: 'Verify JWT token validity (service-to-service endpoint)',
+      tags: ['Authentication'],
+      summary: 'Verify token',
+      body: Type.Object({
+        token: Type.String({ description: 'JWT access token to verify' }),
+      }),
+      response: {
+        200: {
+          description: 'Token is valid',
+          content: {
+            'application/json': {
+              schema: Type.Object({
+                valid: Type.Boolean({ example: true }),
+                userId: Type.String({ format: 'uuid' }),
+                email: Type.String({ format: 'email' }),
+                tenantId: Type.String({ description: 'Tenant ID' }),
+              }),
+            },
+          },
+        },
+        401: {
+          description: 'Token is invalid or expired',
+          content: {
+            'application/json': {
+              schema: Type.Object({
+                valid: Type.Boolean({ example: false }),
+                error: Type.String(),
+              }),
+            },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { token } = request.body as { token: string };
+
+    try {
+      // Verify token signature and expiry
+      const decoded = await fastify.jwt.verify(token) as any;
+
+      {{#if service.features.cache}}
+      // Check if token is blacklisted
+      const isBlacklisted = await fastify.redis.get(`blacklist:${token}`);
+
+      if (isBlacklisted) {
+        return reply.code(401).send({
+          valid: false,
+          error: 'Token has been revoked'
+        });
+      }
+      {{/if}}
+
+      // Return token claims
+      return {
+        valid: true,
+        userId: decoded.userId || decoded.id,
+        email: decoded.email,
+        tenantId: decoded.tenantId || 'default'
+      };
+    } catch (error) {
+      fastify.log.warn({ error: error.message }, 'Token verification failed');
+      return reply.code(401).send({
+        valid: false,
+        error: 'Invalid or expired token'
+      });
+    }
+  });
+
   // GET /auth/me - Get current user profile
   fastify.get('/auth/me', {
     schema: {
